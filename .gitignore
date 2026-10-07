@@ -3,3 +3,6 @@
 
 # Ajustes locales con datos privados (WiFi, contraseñas): no se suben al repositorio
 k3ng_rotator_controller/rotator_settings_esp32_local.h
+
+# PstRotator (software de terceros, con licencia propia) y su prefijo de Wine: solo local
+pstrotator/
