@@ -3580,7 +3580,7 @@ void check_serial(){
     incoming_serial_byte = control_port->read();
     last_serial_receive_time = millis();
     #ifdef FEATURE_WIFI
-      wifi_raw_line_feed(incoming_serial_byte);
+      wifi_raw_line_feed(incoming_serial_byte, 0);   // 0 = WIFI_RAW_SOURCE_SERIAL
     #endif
 
     #ifdef DEBUG_SERIAL
@@ -16330,6 +16330,9 @@ byte process_backslash_command(byte input_buffer[], int input_buffer_index, byte
         strcpy_P(return_string, (const char*) F("Error.  Usage \\Gxxxxxx"));
       } else {
         grid2deg(grid, &longitude, &latitude);
+        #if defined(FEATURE_WIFI)
+          station_location_save();     // en ESP32 la ubicación se conserva tras reiniciar
+        #endif
         strcpy_P(return_string, (const char*) F("Coordinates set to: "));
         dtostrf(latitude, 0, 4, temp_string);
         strcat(return_string, temp_string);
@@ -16878,7 +16881,7 @@ byte process_backslash_command(byte input_buffer[], int input_buffer_index, byte
 
   #if defined(FEATURE_WIFI)
     case 'W':   // \WI, \WS<ssid>, \WP<clave>, \WR, \WD - ver rotator_esp32_wifi.h
-      wifi_backslash_command(input_buffer, input_buffer_index, return_string);
+      wifi_backslash_command(input_buffer, input_buffer_index, source_port, return_string);
       break;
   #endif // FEATURE_WIFI
 

@@ -195,6 +195,8 @@ You can tweak these, but read the online documentation!
 
 #define SERIAL_LED_TIME_MS 250
 
+// Ubicación por defecto. Se cambia sin recompilar con \Gxxxxxx (locator) o desde la web;
+// en ESP32 el valor nuevo se guarda en flash y tiene prioridad sobre este.
 #define DEFAULT_LATITUDE 40.889958
 #define DEFAULT_LONGITUDE -75.585972
 
@@ -441,6 +443,7 @@ You can tweak these, but read the online documentation!
 #define WIFI_TCP_PORT 23                            // puerto serie virtual (GS-232 / Easycom / comandos \)
 #define WIFI_MESSAGE_TIMEOUT_MS 5000                // se descarta un comando TCP incompleto pasado este tiempo
 #define WIFI_RECONNECT_INTERVAL_MS 15000
+#define WIFI_TCP_WRITE_TIMEOUT_MS 50                // espera máxima por intento de escritura TCP (hasta 10 intentos)
 
 #define WIFI_USE_DHCP 1                             // 0 = IP fija con los valores siguientes
 #define WIFI_STATIC_IP 192,168,1,172
@@ -451,3 +454,14 @@ You can tweak these, but read the online documentation!
 #define NTP_SERVER_1 "pool.ntp.org"
 #define NTP_SERVER_2 "time.google.com"
 #define NTP_RESYNC_INTERVAL_MS 3600000              // resincroniza el reloj cada hora
+#define NTP_STALE_AFTER_MS 86400000                 // sin NTP durante 24 h, clock_status vuelve a FREE_RUNNING
+
+/* ---------------------- Servidor web (FEATURE_WEB_SERVER) ---------------------- */
+#define WEB_SERVER_PORT 80
+#define WEB_SERVER_USER "admin"
+#define WEB_SERVER_PASSWORD ""                      // vacío = sin contraseña (solo en una red local de confianza)
+#define WEB_JOG_KEEPALIVE_MS 250                    // la página repite la orden de movimiento cada 250 ms mientras se pulsa
+#define WEB_JOG_TIMEOUT_MS 1000                     // sin repetición durante 1 s, el eje se detiene solo
+#define WEB_SNAPSHOT_INTERVAL_MS 200                // cada cuánto publica el loop el estado que lee /api/status
+#define WEB_COMMAND_QUEUE_LENGTH 16
+#define WEB_SERVER_TASK_STACK 8192                  // bytes de pila de la tarea del servidor web (núcleo 0)

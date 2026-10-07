@@ -152,3 +152,68 @@ Correcciones a partir de la revisión con un subagente Sonnet:
 
 **Resultado:** compila sin avisos. RAM al 16,0 % y flash al 55,3 % (partición de app de
 1,9 MB).
+
+## 2026-10-07: correcciones de la etapa 3 tras la revisión
+
+Correcciones a partir de la revisión con un subagente Sonnet:
+- `\W` sin subcomando leía un byte sobrante del comando anterior y podía ejecutar `\WR` o
+  `\WD`, que borra las credenciales. Ahora `\W` a secas equivale a `\WI`.
+- `\WP` guardaba una contraseña vacía cuando la copia cruda de la línea no coincidía con el
+  comando. Ahora la copia cruda tiene que coincidir con el comando completo: misma longitud
+  y mismas letras, sin distinguir mayúsculas. Si no coincide, `\WS` y `\WP` dan error y no
+  guardan nada.
+- La copia cruda se desfasaba del buffer de comandos cuando este se vaciaba (por timeout,
+  cliente nuevo o buffer lleno). Ahora hay una copia por origen (serie y TCP) y se
+  reinicia o cierra en los mismos puntos que el buffer.
+- Los clientes telnet en modo carácter envían CR NUL, y el NUL acababa como primer byte del
+  comando siguiente. Ahora se descarta.
+- La negociación telnet se filtra con una pequeña máquina de estados: comandos de un byte,
+  WILL/WONT/DO/DONT con opción y subnegociación SB…SE.
+- `println()` al cliente TCP podía bloquear el loop unos 3 s si el cliente dejaba de leer.
+  Se baja el tiempo de escritura a 50 ms por intento con `setConnectionTimeout()`.
+- La reconexión forzada solo se hace en estados de fallo, para no cortar un intento de
+  conexión en curso.
+- Sin NTP durante 24 h, `clock_status` vuelve a `FREE_RUNNING`.
+
+## 2026-10-07: etapa 4, servidor web para smartphone
+
+**Cambios**
+- `FEATURE_WEB_SERVER`, en `rotator_esp32_web.h`, usa el `WebServer` del core, sin
+  librerías externas. Página única de 7,7 KB con HTML, CSS y JS embebidos, sin recursos
+  externos, porque el rotor puede estar en una red sin internet. Diseño oscuro, botones
+  grandes y márgenes seguros para iPhone. Dirección: `http://rotor.local/`.
+- Funciones pedidas en `requerimientos.txt`:
+  - **Monitorización:** azimut, elevación, estado de movimiento por eje, uptime (contador
+    de 64 bits), RSSI con valoración, SSID, IP, hora UTC, estado del BNO055 y locator.
+  - **Movimiento rápido:** 4 botones en cruz (CW, CCW, arriba y abajo), que mueven el eje
+    mientras se mantienen pulsados.
+  - **Seguimiento del Sol y de la Luna:** botones que se activan y desactivan con un toque,
+    con la posición actual de cada uno. Exigen hora NTP y BNO055 operativo.
+  - **STOP:** parada inmediata (`REQUEST_KILL`) de ambos ejes, que además desactiva
+    cualquier seguimiento.
+- API: `GET /api/status`, y `POST /api/move`, `/api/stop`, `/api/track` y `/api/locator`.
+- **Hombre muerto:** mientras se pulsa un botón, la página repite la orden cada 250 ms. Si
+  el firmware pasa 1 s sin recibirla (móvil bloqueado, WiFi caído, pestaña cerrada), detiene
+  el eje. La página también suelta el botón al perder el foco o al cambiar de pestaña.
+- **Aislamiento del control de motores:** `WebServer::handleClient()` puede bloquear hasta
+  5 s con un cliente lento, y esos tiempos son fijos en el core. Por eso el servidor corre
+  en una tarea de FreeRTOS en el núcleo 0:
+  - Las órdenes llegan al `loop()` por una cola, y es el loop quien las aplica con
+    `submit_request()`.
+  - El loop publica cada 200 ms una copia del estado, protegida con un spinlock.
+  - La tarea web nunca toca el estado del rotor.
+- Un movimiento manual desactiva el seguimiento, porque si no el seguimiento devolvería el
+  rotor a su objetivo. Se respeta `ROTATIONAL_AND_CONFIGURATION_CMD_IGNORE_TIME_MS` tras el
+  arranque.
+- Contraseña opcional con autenticación básica (`WEB_SERVER_PASSWORD`; vacía por defecto).
+- **Ubicación persistente:** en el firmware original la latitud y la longitud solo viven en
+  RAM y vuelven al valor por defecto, que está en Pensilvania, en cada arranque. Ahora
+  `\G<locator>` y la web la guardan en `Preferences` y se restaura al arrancar.
+- `tools/web_preview.py`: extrae la página del firmware y la sirve con un rotor simulado,
+  para revisar la interfaz sin ESP32. También se usó para probar la API y el hombre muerto.
+
+**Pruebas:** compilación sin avisos y sintaxis JS validada con Node. Contra la API
+simulada se probaron la página, el estado, el movimiento, la parada por hombre muerto a 1,5 s,
+el seguimiento, la parada general y el locator válido e inválido.
+
+**Resultado:** RAM al 16,3 % y flash al 57,4 %.

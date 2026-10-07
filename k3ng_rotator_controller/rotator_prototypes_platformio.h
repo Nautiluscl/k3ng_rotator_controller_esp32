@@ -29,9 +29,15 @@
 #if defined(FEATURE_WIFI)
   void initialize_wifi();
   void service_wifi();
-  void wifi_raw_line_feed(byte incoming_byte);
+  void wifi_raw_line_feed(byte incoming_byte, byte source);
   void wifi_tcp_print(char * print_this);
-  void wifi_backslash_command(byte input_buffer[], int input_buffer_index, char * return_string);
+  void wifi_backslash_command(byte input_buffer[], int input_buffer_index, byte source_port, char * return_string);
+#endif
+
+#if defined(FEATURE_WIFI) && (defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING))
+  void station_location_load();
+  void station_location_save();
+  byte station_location_set_from_grid(const char * grid_in, char * grid_out);
 #endif
 
 #if defined(FEATURE_WEB_SERVER)

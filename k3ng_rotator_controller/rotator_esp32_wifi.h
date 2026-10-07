@@ -31,29 +31,115 @@ byte ntp_synced = 0;
 unsigned long ntp_last_sync = 0;
 unsigned long ntp_last_check = 0;
 
-// Copia de la última línea recibida conservando mayúsculas y minúsculas. El firmware pasa a
+// Copia de la línea recibida conservando mayúsculas y minúsculas. El firmware pasa a
 // mayúsculas todo lo que entra, lo que estropearía el SSID y la contraseña de \WS y \WP.
-char wifi_raw_line[WIFI_RAW_LINE_SIZE] = "";
-byte wifi_raw_line_index = 0;
-char wifi_raw_last_line[WIFI_RAW_LINE_SIZE] = "";
+// Hay una copia por origen (puerto serie y TCP) para que no se mezclen.
+#define WIFI_RAW_SOURCE_SERIAL 0
+#define WIFI_RAW_SOURCE_TCP 1
+
+struct wifi_raw_line_t {
+  char line[WIFI_RAW_LINE_SIZE];
+  byte index;
+  char last_line[WIFI_RAW_LINE_SIZE];
+};
+wifi_raw_line_t wifi_raw[2];
 
 // --------------------------------------------------------------
-void wifi_raw_line_feed(byte incoming_byte){
+void wifi_raw_line_feed(byte incoming_byte, byte source){
+
+  wifi_raw_line_t * raw = &wifi_raw[source ? 1 : 0];
 
   if ((incoming_byte == 13) || (incoming_byte == 10)) {
-    if (wifi_raw_line_index > 0) {
-      wifi_raw_line[wifi_raw_line_index] = 0;
-      strcpy(wifi_raw_last_line, wifi_raw_line);
-      wifi_raw_line_index = 0;
+    if (raw->index > 0) {
+      raw->line[raw->index] = 0;
+      strcpy(raw->last_line, raw->line);
+      raw->index = 0;
     }
     return;
   }
-  if (wifi_raw_line_index < (WIFI_RAW_LINE_SIZE - 1)) {
-    wifi_raw_line[wifi_raw_line_index] = incoming_byte;
-    wifi_raw_line_index++;
+  if (raw->index < (WIFI_RAW_LINE_SIZE - 1)) {
+    raw->line[raw->index] = incoming_byte;
+    raw->index++;
   }
 
 }
+
+// --------------------------------------------------------------
+void wifi_raw_line_reset(byte source){
+
+  // se llama cuando el intérprete descarta su buffer, para que la copia cruda no se desfase
+  wifi_raw[source ? 1 : 0].index = 0;
+  wifi_raw[source ? 1 : 0].last_line[0] = 0;
+
+}
+
+// --------------------------------------------------------------
+void wifi_raw_line_close(byte source){
+
+  // el intérprete procesa una línea sin CR (buffer lleno): se cierra también la copia cruda
+  wifi_raw_line_feed(13, source);
+
+}
+
+// --------------------------------------------------------------
+#if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
+void station_location_load(){
+
+  // Ubicación de la estación para el cálculo del Sol y la Luna. En el firmware original vive
+  // solo en RAM (latitude/longitude) y vuelve a DEFAULT_LATITUDE/LONGITUDE en cada arranque.
+  Preferences prefs;
+  if (prefs.begin("location", true)) {
+    if (prefs.isKey("lat") && prefs.isKey("lon")) {
+      latitude = prefs.getDouble("lat", DEFAULT_LATITUDE);
+      longitude = prefs.getDouble("lon", DEFAULT_LONGITUDE);
+    }
+    prefs.end();
+  }
+
+}
+
+// --------------------------------------------------------------
+void station_location_save(){
+
+  Preferences prefs;
+  if (prefs.begin("location", false)) {
+    prefs.putDouble("lat", latitude);
+    prefs.putDouble("lon", longitude);
+    prefs.end();
+  }
+
+}
+
+// --------------------------------------------------------------
+byte station_location_set_from_grid(const char * grid_in, char * grid_out){
+
+  // Locator Maidenhead de 6 caracteres (p. ej. FF46pn). Devuelve 1 si es válido; en grid_out
+  // queda normalizado (AA00aa).
+  if (strlen(grid_in) != 6) {
+    return 0;
+  }
+  char grid[7];
+  for (byte i = 0; i < 6; i++) {
+    char c = grid_in[i];
+    if ((i == 2) || (i == 3)) {
+      if (!isdigit(c)) { return 0; }
+      grid[i] = c;
+    } else {
+      if (!isalpha(c)) { return 0; }
+      grid[i] = (i < 2) ? toupper(c) : tolower(c);
+      if ((i < 2) && (grid[i] > 'R')) { return 0; }     // campo: A-R
+      if ((i >= 4) && (grid[i] > 'x')) { return 0; }    // subcuadro: a-x
+    }
+  }
+  grid[6] = 0;
+
+  grid2deg(grid, &longitude, &latitude);
+  station_location_save();
+  strcpy(grid_out, grid);
+  return 1;
+
+}
+#endif
 
 // --------------------------------------------------------------
 void wifi_load_credentials(){
@@ -89,6 +175,9 @@ void wifi_start_connection(){
 void initialize_wifi(){
 
   wifi_load_credentials();
+  #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
+    station_location_load();
+  #endif
 
   WiFi.persistent(false);              // las credenciales se guardan en Preferences, no en la NVS del driver
   WiFi.mode(WIFI_STA);
@@ -105,6 +194,10 @@ void initialize_wifi(){
 
   wifi_tcp_server.begin();
   wifi_tcp_server.setNoDelay(true);
+
+  #if defined(FEATURE_WEB_SERVER)
+    initialize_web_server();
+  #endif
 
   control_port->print(F("WiFi: connecting to "));
   control_port->println(wifi_ssid);
@@ -143,6 +236,13 @@ void service_ntp(){
   #if defined(FEATURE_CLOCK)
     // hasta la primera sincronización se mira cada segundo; después, cada NTP_RESYNC_INTERVAL_MS
     unsigned long interval = ntp_synced ? NTP_RESYNC_INTERVAL_MS : 1000;
+
+    // si se pierde el NTP durante mucho tiempo, el reloj sigue funcionando pero ya no se
+    // marca como sincronizado
+    if (ntp_synced && ((millis() - ntp_last_sync) > NTP_STALE_AFTER_MS)) {
+      clock_status = FREE_RUNNING;
+    }
+
     if ((millis() - ntp_last_check) < interval) {
       return;
     }
@@ -179,9 +279,15 @@ void service_wifi_connection(){
     wifi_last_connect_attempt = millis();
   }
 
-  // el driver reintenta solo (setAutoReconnect), pero si se queda en un estado de fallo se fuerza
+  // el driver reintenta solo (setAutoReconnect); solo se fuerza un intento nuevo si se ha
+  // quedado en un estado de fallo, para no cortar un intento que todavía está en curso
   if ((millis() - wifi_last_connect_attempt) > WIFI_RECONNECT_INTERVAL_MS) {
-    wifi_start_connection();
+    wl_status_t status = WiFi.status();
+    if ((status == WL_CONNECT_FAILED) || (status == WL_NO_SSID_AVAIL) || (status == WL_CONNECTION_LOST) || (status == WL_DISCONNECTED) || (status == WL_STOPPED)) {
+      wifi_start_connection();
+    } else {
+      wifi_last_connect_attempt = millis();
+    }
   }
 
 }
@@ -192,7 +298,7 @@ void service_wifi_tcp(){
   static byte tcp_buffer[COMMAND_BUFFER_SIZE];
   static int tcp_buffer_index = 0;
   static unsigned long last_received_byte = 0;
-  static byte telnet_iac_skip = 0;
+  static byte telnet_state = 0;        // 0 datos, 1 tras IAC, 2 opción de WILL/WONT/DO/DONT, 3 subnegociación, 4 IAC en subnegociación
   char return_string[100] = "";
 
   // conexión nueva: sustituye a la anterior (un cliente WiFi que desaparece sin cerrar
@@ -204,8 +310,12 @@ void service_wifi_tcp(){
     }
     wifi_tcp_client = new_client;
     wifi_tcp_client.setNoDelay(true);
+    // write() espera a que el socket admita datos hasta este tiempo (x10 reintentos): si el
+    // cliente deja de leer, el loop no se queda varios segundos bloqueado en println()
+    wifi_tcp_client.setConnectionTimeout(WIFI_TCP_WRITE_TIMEOUT_MS);
     tcp_buffer_index = 0;
-    telnet_iac_skip = 0;
+    telnet_state = 0;
+    wifi_raw_line_reset(WIFI_RAW_SOURCE_TCP);
     #ifdef DEBUG_ETHERNET
       debug.print(F("service_wifi_tcp: client "));
       debug.println(wifi_tcp_client.remoteIP().toString().c_str());
@@ -219,6 +329,7 @@ void service_wifi_tcp(){
   // descartar un mensaje a medias si lleva demasiado tiempo sin completarse
   if ((tcp_buffer_index) && ((millis() - last_received_byte) > WIFI_MESSAGE_TIMEOUT_MS)) {
     tcp_buffer_index = 0;
+    wifi_raw_line_reset(WIFI_RAW_SOURCE_TCP);
   }
 
   // como mucho 64 bytes por pasada para no retrasar el control de los motores
@@ -229,17 +340,41 @@ void service_wifi_tcp(){
     bytes_this_pass++;
     last_received_byte = millis();
 
-    // negociación telnet (IAC = 255, seguido de dos bytes): se ignora
-    if (telnet_iac_skip) {
-      telnet_iac_skip--;
-      continue;
+    // negociación telnet: se descarta. IAC (255) va seguido de un comando de un byte, de
+    // WILL/WONT/DO/DONT (251-254) + opción, o de SB (250) ... IAC SE (240)
+    switch (telnet_state) {
+      case 1:
+        if ((incoming_byte >= 251) && (incoming_byte <= 254)) {
+          telnet_state = 2;
+        } else if (incoming_byte == 250) {
+          telnet_state = 3;
+        } else {
+          telnet_state = 0;          // comando de un byte (NOP, AYT...) o IAC IAC: se ignora
+        }
+        continue;
+      case 2:
+        telnet_state = 0;
+        continue;
+      case 3:
+        if (incoming_byte == 255) {
+          telnet_state = 4;
+        }
+        continue;
+      case 4:
+        telnet_state = (incoming_byte == 240) ? 0 : 3;
+        continue;
     }
     if (incoming_byte == 255) {
-      telnet_iac_skip = 2;
+      telnet_state = 1;
       continue;
     }
 
-    wifi_raw_line_feed(incoming_byte);
+    // los clientes telnet en modo carácter envían CR NUL: el NUL se descarta
+    if (incoming_byte == 0) {
+      continue;
+    }
+
+    wifi_raw_line_feed(incoming_byte, WIFI_RAW_SOURCE_TCP);
 
     if ((incoming_byte > 96) && (incoming_byte < 123)) {  // a mayúsculas, como el resto de puertos
       incoming_byte = incoming_byte - 32;
@@ -251,6 +386,9 @@ void service_wifi_tcp(){
     }
 
     if (((incoming_byte == 13) || (tcp_buffer_index >= COMMAND_BUFFER_SIZE)) && (tcp_buffer_index > 0)) {
+      if (incoming_byte != 13) {
+        wifi_raw_line_close(WIFI_RAW_SOURCE_TCP);
+      }
       return_string[0] = 0;
       if ((tcp_buffer[0] == '\\') || (tcp_buffer[0] == '/')) {
         process_backslash_command(tcp_buffer, tcp_buffer_index, ETHERNET_PORT0, INCLUDE_RESPONSE_CODE, return_string, SOURCE_CONTROL_PORT);
@@ -323,7 +461,7 @@ byte wifi_save_credentials(){
 }
 
 // --------------------------------------------------------------
-void wifi_backslash_command(byte input_buffer[], int input_buffer_index, char * return_string){
+void wifi_backslash_command(byte input_buffer[], int input_buffer_index, byte source_port, char * return_string){
 
   /*
     \WI          - estado: red, IP, RSSI, nombre mDNS y sincronización NTP
@@ -333,13 +471,32 @@ void wifi_backslash_command(byte input_buffer[], int input_buffer_index, char * 
     \WD          - vuelve al SSID y la contraseña de rotator_settings_esp32.h
   */
 
-  // argumento con mayúsculas originales: la línea cruda empieza por \WS o \WP
-  const char * raw_argument = "";
-  if ((strlen(wifi_raw_last_line) >= 3) && ((wifi_raw_last_line[0] == '\\') || (wifi_raw_last_line[0] == '/')) && (toupper(wifi_raw_last_line[1]) == 'W') && (toupper(wifi_raw_last_line[2]) == toupper(input_buffer[2]))) {
-    raw_argument = wifi_raw_last_line + 3;
+  // \W a secas: input_buffer[2] tendría restos del comando anterior
+  char subcommand = (input_buffer_index >= 3) ? toupper(input_buffer[2]) : 'I';
+
+  // argumento con mayúsculas originales: la línea cruda del mismo origen tiene que ser
+  // exactamente este comando (misma longitud y mismas letras sin distinguir mayúsculas)
+  const char * raw_line = wifi_raw[(source_port == CONTROL_PORT0) ? WIFI_RAW_SOURCE_SERIAL : WIFI_RAW_SOURCE_TCP].last_line;
+  const char * raw_argument = NULL;
+  if (((int)strlen(raw_line) == input_buffer_index) && (input_buffer_index >= 3)) {
+    byte matches = 1;
+    for (int i = 0; i < input_buffer_index; i++) {
+      if (toupper(raw_line[i]) != toupper(input_buffer[i])) {
+        matches = 0;
+        break;
+      }
+    }
+    if (matches) {
+      raw_argument = raw_line + 3;
+    }
   }
 
-  switch (toupper(input_buffer[2])) {
+  if (((subcommand == 'S') || (subcommand == 'P')) && (raw_argument == NULL)) {
+    strcpy_P(return_string, (const char*) F("Error: line not available, retry"));
+    return;
+  }
+
+  switch (subcommand) {
 
     case 'S':
       if ((strlen(raw_argument) == 0) || (strlen(raw_argument) > 32)) {
