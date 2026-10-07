@@ -309,3 +309,43 @@ Probados con el simulador el STOP desde otro móvil, el keepalive posterior y el
 - Se comprobó que sin archivo local el firmware lleva los valores de ejemplo, y que con él
   lleva los locales. La contraseña no aparece en ningún archivo versionado ni en el
   historial de git.
+
+## 2026-10-07: primera prueba sobre hardware real
+
+Placa: ESP32-D0WDQ6 rev. 1.0 (ESP32-WROOM-32), cristal de 40 MHz, en `/dev/ttyUSB0`. Solo la
+placa: **sin HH-12, sin BNO055 y sin relés conectados**.
+
+**Defecto encontrado y corregido**
+- El core del ESP32 escribía sus mensajes de log (`[E][esp32-hal-i2c-ng.c] i2cWrite() …`
+  cada 10 s al reintentar el BNO055, y `[E][Preferences.cpp] nvs_open failed` en el primer
+  arranque) por `Serial`, que es el puerto de control GS-232. Un programa de seguimiento
+  conectado por USB habría recibido esas líneas mezcladas con las respuestas. Se añade
+  `-DCORE_DEBUG_LEVEL=0` en `platformio.ini`.
+- La basura que aparece al arrancar la emite el cargador de arranque ROM del chip a
+  115200 baudios. Es normal y no se puede evitar.
+
+**Pruebas superadas** (scripts en `tools/`)
+- Arranque: conecta a la red WiFi en unos 3 s, sincroniza NTP y anuncia `rotor.local`.
+  `BNO055: not found` es correcto, porque el sensor no está conectado.
+- `tools/test_red.py`, 25 de 25 pruebas:
+  - **mDNS y puerto TCP 23:** `C2` responde en 11 ms. Funcionan las minúsculas, `\WI` y
+    `\W` sin argumento. La negociación telnet (IAC) y el CR NUL se filtran bien. Un segundo
+    cliente sustituye al primero.
+  - **Web:** página de 8,4 KB, `/api/status` en 47 ms, hora NTP, Sol y Luna calculados.
+  - **Movimiento mantenido sobre el firmware real:** arranca el eje, el keepalive lo
+    mantiene y el hombre muerto lo para a 1 s. Un keepalive tardío o una orden atrasada no
+    vuelven a arrancarlo, y el STOP de otro cliente gana al keepalive.
+  - **Rechazos:** sin BNO055 se rechazan la elevación y el seguimiento, igual que una
+    dirección inválida o un locator inválido.
+- `tools/test_sol_y_tcp.py`:
+  - **Sol:** la posición calculada por el firmware para FF46pi coincide con un cálculo
+    NOAA independiente (diferencia de 0,00° en azimut y 0,01° en elevación). Esto valida a
+    la vez el NTP, la ubicación y `sunpos`.
+  - **Cliente TCP que no lee:** se enviaron unos 2900 comandos en 20 s sin leer las
+    respuestas. El ESP32 no se bloquea ni se reinicia, la web sigue respondiendo en menos
+    de 75 ms y el firmware desconecta al cliente ("TCP client not reading -
+    disconnected"). Queda confirmada la corrección de escritura TCP sin bloqueo.
+
+**Pendiente de probar con el hardware conectado:** HH-12 (lectura de azimut), BNO055
+(elevación, calibración, detección de fallo en caliente), salida real de los relés en
+GPIO 25/26/32/33 y el procedimiento completo de "Puesta en marcha" del README.
