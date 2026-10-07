@@ -99,3 +99,56 @@ Documentos relacionados:
   activación de Wire, y es incompatible con otros sensores de elevación.
 
 **Resultado:** compila sin avisos. RAM al 7,5 % y flash al 19,1 %.
+
+## 2026-10-07: correcciones de la etapa 2 tras la revisión
+
+Correcciones a partir de la revisión con un subagente Sonnet:
+- `Adafruit_BNO055::begin()` espera el `CHIP_ID` sin límite de tiempo después del reset por
+  software. Si el sensor deja de responder justo en ese momento, el loop se colgaría con los
+  relés activos. Ahora `bno055_chip_present()` lee el registro 0x00 por I2C y solo se llama
+  a `begin()` si responde 0xA0. El watchdog de la etapa 5 cubre el riesgo que queda.
+- El suavizado se sembraba con la lectura cruda, sin corrección ni offset, y no se volvía a
+  sembrar tras un fallo. Ahora se siembra con la primera lectura buena ya corregida y se
+  vuelve a sembrar después de cada `FAULT`.
+
+## 2026-10-07: etapa 3, WiFi, puerto serie virtual TCP y hora por NTP
+
+**Cambios**
+- `FEATURE_WIFI` (solo ESP32), en el nuevo archivo `rotator_esp32_wifi.h`, que se incluye
+  al final del `.ino`:
+  - Modo estación con conexión **no bloqueante**: el rotor funciona por USB aunque no haya
+    WiFi. Reconexión automática y reintento forzado cada 15 s.
+  - `WiFi.setSleep(false)` para que la latencia por comando sea baja.
+  - mDNS: `rotor.local`, con los servicios `_telnet._tcp` y `_http._tcp`.
+  - Servidor TCP en el puerto 23 con los mismos intérpretes que el puerto USB (GS-232,
+    Easycom y `\`), escrito de cero: el `service_ethernet()` original no sirve con
+    `WiFiServer`, porque `available()` tiene otra semántica en el ESP32. Admite un cliente;
+    uno nuevo sustituye al anterior, para que un cliente WiFi caído no bloquee el puerto.
+    Filtra la negociación telnet (IAC) y procesa como mucho 64 bytes por pasada.
+  - NTP con `configTime()` (SNTP en segundo plano). Cuando hay hora válida se vuelca a
+    TimeLib (`setTime`) y `clock_status` pasa a `NTP_SYNC`. Resincroniza cada hora.
+  - Comandos `\WI` (estado), `\WS<ssid>`, `\WP<clave>`, `\WR` (reconectar) y `\WD`
+    (valores por defecto). Las credenciales se guardan en `Preferences`.
+- El firmware pasa a mayúsculas todo lo que recibe, lo que estropearía el SSID y la
+  contraseña. Se guarda aparte una copia de la línea con las mayúsculas originales
+  (`wifi_raw_line_feed()`), alimentada desde el puerto serie y desde TCP, y `\WS`/`\WP`
+  leen de esa copia.
+- `COMMAND_BUFFER_SIZE` pasa de 50 a 80 en el perfil ESP32, para admitir contraseñas WPA
+  de hasta 63 caracteres.
+- Se activan `FEATURE_CLOCK`, `FEATURE_SUN_TRACKING` y `FEATURE_MOON_TRACKING`.
+- `rotator_dependencies.h`: `FEATURE_WIFI` exige ESP32 y es incompatible con
+  `FEATURE_ETHERNET` y con `FEATURE_ANCILLARY_PIN_CONTROL`, que también usa `\W`.
+
+**Problemas encontrados**
+- El conversor `.ino` de PlatformIO no genera prototipos de funciones definidas con sangría
+  (`update_moon_position`) ni de algunas que devuelven `char *`. Se crea
+  `rotator_prototypes_platformio.h` con los prototipos que faltan.
+- El compilador del ESP32 trata como error una función con valor de retorno que puede
+  terminar sin `return` (`-Werror=return-type`). Se añaden en `clock_status_string()` y
+  `days_in_month()`.
+- La librería `WiFi` del core 3.3.12 incluye `"Network.h"` entre comillas y PlatformIO no
+  resuelve la dependencia. La librería se llama `Networking`, no `Network`. Se declaran las
+  librerías del core en `lib_deps` y se añade la ruta de `Network/src` en `build_flags`.
+
+**Resultado:** compila sin avisos. RAM al 16,0 % y flash al 55,3 % (partición de app de
+1,9 MB).

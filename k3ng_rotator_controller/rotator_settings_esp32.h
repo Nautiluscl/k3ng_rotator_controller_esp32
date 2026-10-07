@@ -168,7 +168,7 @@ You can tweak these, but read the online documentation!
 
 #define NOT_PARKED_DETECT_TIME_MS 1000
 
-#define COMMAND_BUFFER_SIZE 50
+#define COMMAND_BUFFER_SIZE 80          // 50 en el original; ampliado para \WP con contraseñas WPA de hasta 63 caracteres
 
 #define REMOTE_BUFFER_TIMEOUT_MS 250
 #define REMOTE_UNIT_COMMAND_TIMEOUT_MS 2000
@@ -429,3 +429,25 @@ You can tweak these, but read the online documentation!
 #define BNO055_REINIT_INTERVAL_MS 10000            // reintento de inicialización tras un fallo
 #define BNO055_GRAVITY_MIN 7.0                     // m/s2: un vector de gravedad fuera de este rango es una lectura inválida
 #define BNO055_GRAVITY_MAX 12.5
+
+/* ---------------------- WiFi (FEATURE_WIFI) ----------------------
+
+   Valores por defecto. Se pueden cambiar sin recompilar con \WS<ssid>, \WP<clave> y \WR
+   (se guardan en Preferences y tienen prioridad sobre estos). \WD vuelve a estos valores.
+*/
+#define WIFI_DEFAULT_SSID "mi_red"
+#define WIFI_DEFAULT_PASSWORD "mi_clave"
+#define WIFI_HOSTNAME "rotor"                       // nombre mDNS: rotor.local
+#define WIFI_TCP_PORT 23                            // puerto serie virtual (GS-232 / Easycom / comandos \)
+#define WIFI_MESSAGE_TIMEOUT_MS 5000                // se descarta un comando TCP incompleto pasado este tiempo
+#define WIFI_RECONNECT_INTERVAL_MS 15000
+
+#define WIFI_USE_DHCP 1                             // 0 = IP fija con los valores siguientes
+#define WIFI_STATIC_IP 192,168,1,172
+#define WIFI_STATIC_GATEWAY 192,168,1,1
+#define WIFI_STATIC_SUBNET 255,255,255,0
+#define WIFI_STATIC_DNS 192,168,1,1
+
+#define NTP_SERVER_1 "pool.ntp.org"
+#define NTP_SERVER_2 "time.google.com"
+#define NTP_RESYNC_INTERVAL_MS 3600000              // resincroniza el reloj cada hora

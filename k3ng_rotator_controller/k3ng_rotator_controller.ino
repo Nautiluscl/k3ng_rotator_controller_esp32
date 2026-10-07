@@ -1258,6 +1258,17 @@
   #include <Ethernet.h>
 #endif
 
+#ifdef FEATURE_WIFI
+  #include <WiFi.h>
+  #include <ESPmDNS.h>
+  #include <Preferences.h>
+  #include <time.h>
+#endif
+
+#ifdef FEATURE_WEB_SERVER
+  #include <WebServer.h>
+#endif
+
 #if defined(FEATURE_AZ_POSITION_ROTARY_ENCODER_USE_PJRC_LIBRARY) || defined(FEATURE_EL_POSITION_ROTARY_ENCODER_USE_PJRC_LIBRARY)
   #include <Encoder.h>
 #endif    
@@ -1308,6 +1319,10 @@
 #endif      
 #if !defined(HARDWARE_CUSTOM)
   #include "rotator_settings.h"
+#endif
+
+#if defined(PLATFORMIO)
+  #include "rotator_prototypes_platformio.h"
 #endif
 
 #ifdef FEATURE_STEPPER_MOTOR
@@ -1762,6 +1777,7 @@ struct config_t {
   byte bno055_offsets_restored = 0;
   unsigned long bno055_last_reinit_attempt = 0;
   float bno055_raw_elevation = 0;          // elevación sin corrección ni offset (diagnóstico)
+  byte bno055_smoothing_seeded = 0;
 #endif //FEATURE_EL_POSITION_BNO055
 
 #ifdef FEATURE_EL_POSITION_ADXL345_USING_ADAFRUIT_LIB
@@ -2117,6 +2133,10 @@ void loop() {
   #ifdef FEATURE_ETHERNET
     service_ethernet();
   #endif // FEATURE_ETHERNET
+
+  #ifdef FEATURE_WIFI
+    service_wifi();
+  #endif // FEATURE_WIFI
 
   #ifdef FEATURE_POWER_SWITCH
     service_power_switch();
@@ -3559,6 +3579,9 @@ void check_serial(){
 
     incoming_serial_byte = control_port->read();
     last_serial_receive_time = millis();
+    #ifdef FEATURE_WIFI
+      wifi_raw_line_feed(incoming_serial_byte);
+    #endif
 
     #ifdef DEBUG_SERIAL
       debug.print("check_serial: control_port: ");
@@ -10040,6 +10063,9 @@ void print_to_port(char * print_this,byte port){
     case ETHERNET_PORT1: ethernetclient1.print(print_this); break;
     #endif //ETHERNET_TCP_PORT_1
     #endif //FEATURE_ETHERNET
+    #ifdef FEATURE_WIFI
+    case ETHERNET_PORT0: wifi_tcp_print(print_this); break;
+    #endif //FEATURE_WIFI
   }
   
   #endif //defined(FEATURE_REMOTE_UNIT_SLAVE) || defined(FEATURE_YAESU_EMULATION) || defined(FEATURE_EASYCOM_EMULATION)
@@ -10355,7 +10381,7 @@ void read_elevation(byte force_read){
     #ifdef FEATURE_EL_POSITION_BNO055
       float bno055_elevation;
       if (bno055_read_elevation(&bno055_elevation)) {
-        static float bno055_smoothed_elevation = bno055_elevation;
+        static float bno055_smoothed_elevation = 0;
         bno055_raw_elevation = bno055_elevation;
         #ifdef FEATURE_ELEVATION_CORRECTION
           bno055_elevation = correct_elevation(bno055_elevation);
@@ -10363,7 +10389,12 @@ void read_elevation(byte force_read){
         #if !defined(FEATURE_CALIBRATION)
           bno055_elevation = bno055_elevation + configuration.elevation_offset;
         #endif
-        // suavizado propio en float (previous_elevation es unsigned int y perdería decimales)
+        // suavizado propio en float (previous_elevation es unsigned int y perdería decimales);
+        // se vuelve a sembrar con la primera lectura buena después de un fallo
+        if (!bno055_smoothing_seeded) {
+          bno055_smoothed_elevation = bno055_elevation;
+          bno055_smoothing_seeded = 1;
+        }
         if (ELEVATION_SMOOTHING_FACTOR > 0) {
           bno055_smoothed_elevation = (bno055_elevation * ((float)1 - ((float)ELEVATION_SMOOTHING_FACTOR / (float)100))) + (bno055_smoothed_elevation * ((float)ELEVATION_SMOOTHING_FACTOR / (float)100));
           bno055_elevation = bno055_smoothed_elevation;
@@ -11910,6 +11941,10 @@ void initialize_peripherals(){
     Ethernet.begin(mac, ip, gateway, subnet);
     ethernetserver0.begin();
   #endif //FEATURE_ETHERNET
+
+  #ifdef FEATURE_WIFI
+    initialize_wifi();
+  #endif //FEATURE_WIFI
 
   #ifdef SET_I2C_BUS_SPEED
     #if defined(ARDUINO_ARCH_ESP32)
@@ -15691,7 +15726,9 @@ char * clock_status_string(){
     case RTC_SYNC: return((char *)"RTC_SYNC"); break;
     case SLAVE_SYNC: return((char *)"SLAVE_SYNC"); break;
     case SLAVE_SYNC_GPS: return((char *)"SLAVE_SYNC_GPS"); break;
+    case NTP_SYNC: return((char *)"NTP_SYNC"); break;
   }
+  return((char *)"UNKNOWN");   // el compilador de ESP32 exige un return en todos los caminos
 }
 #endif //FEATURE_CLOCK
 // --------------------------------------------------------------
@@ -16838,6 +16875,12 @@ byte process_backslash_command(byte input_buffer[], int input_buffer_index, byte
       }
       break;
   #endif // FEATURE_ANCILLARY_PIN_CONTROL
+
+  #if defined(FEATURE_WIFI)
+    case 'W':   // \WI, \WS<ssid>, \WP<clave>, \WR, \WD - ver rotator_esp32_wifi.h
+      wifi_backslash_command(input_buffer, input_buffer_index, return_string);
+      break;
+  #endif // FEATURE_WIFI
 
   #if defined(FEATURE_AUTOPARK)
 
@@ -22497,6 +22540,7 @@ void convert_polar_to_cartesian(byte coordinate_conversion,double azimuth_in,dou
         }
         break;  
     }
+    return 31;   // mes fuera de rango; el compilador de ESP32 exige un return en todos los caminos
   }
 
 #endif 
@@ -23513,6 +23557,13 @@ byte bno055_initialize(){
     delay(700);   // el BNO055 tarda unos 650 ms en arrancar tras un reset
   #endif
 
+  // Adafruit_BNO055::begin() espera el CHIP_ID sin límite de tiempo después del reset por
+  // software: si el sensor no responde aquí, no se llama a begin() para no colgar el loop
+  if (!bno055_chip_present()) {
+    bno055_state = BNO055_STATE_NOT_FOUND;
+    return 0;
+  }
+
   if (!bno.begin(OPERATION_MODE_IMUPLUS)) {
     bno055_state = BNO055_STATE_NOT_FOUND;
     return 0;
@@ -23530,6 +23581,23 @@ byte bno055_initialize(){
   bno055_state = BNO055_STATE_OK;
   bno055_consecutive_failures = 0;
   return 1;
+
+}
+
+// --------------------------------------------------------------
+byte bno055_chip_present(){
+
+  // Lee el registro CHIP_ID (0x00); el BNO055 responde 0xA0
+  Wire.begin();
+  Wire.beginTransmission(BNO055_I2C_ADDRESS);
+  Wire.write((uint8_t)0x00);
+  if (Wire.endTransmission() != 0) {
+    return 0;
+  }
+  if (Wire.requestFrom((uint8_t)BNO055_I2C_ADDRESS, (uint8_t)1) != 1) {
+    return 0;
+  }
+  return (Wire.read() == 0xA0);
 
 }
 
@@ -23571,6 +23639,7 @@ byte bno055_read_elevation(float * result){
     #endif
     if (bno055_consecutive_failures >= BNO055_FAIL_THRESHOLD) {
       bno055_state = BNO055_STATE_FAULT;
+      bno055_smoothing_seeded = 0;
       bno055_last_reinit_attempt = millis();
       if (current_el_state() != NOT_DOING_ANYTHING) {
         submit_request(EL, REQUEST_KILL, 0, DBG_BNO055_SENSOR_FAULT);
@@ -23688,3 +23757,13 @@ void bno055_status_string(char * return_string){
 
 }
 #endif // FEATURE_EL_POSITION_BNO055
+
+// --------------------------------------------------------------
+// Módulos del perfil ESP32 (WiFi, servidor web). Se incluyen al final porque usan
+// el estado y las funciones del sketch.
+#if defined(FEATURE_WIFI)
+  #include "rotator_esp32_wifi.h"
+#endif
+#if defined(FEATURE_WEB_SERVER)
+  #include "rotator_esp32_web.h"
+#endif

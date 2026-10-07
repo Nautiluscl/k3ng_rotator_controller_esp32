@@ -174,6 +174,7 @@
 #define RTC_SYNC 2
 #define SLAVE_SYNC 3
 #define SLAVE_SYNC_GPS 4
+#define NTP_SYNC 5
 #define NOT_PROVISIONED 255
 
 #define CONTROL_PORT0 1

@@ -179,3 +179,19 @@
 #if defined(FEATURE_EL_POSITION_BNO055) && !defined(FEATURE_ELEVATION_CONTROL)
   #error "FEATURE_EL_POSITION_BNO055 requiere FEATURE_ELEVATION_CONTROL"
 #endif
+
+#if defined(FEATURE_WIFI) && !defined(ARDUINO_ARCH_ESP32)
+  #error "FEATURE_WIFI requiere un ESP32"
+#endif
+
+#if defined(FEATURE_WIFI) && defined(FEATURE_ETHERNET)
+  #error "FEATURE_WIFI y FEATURE_ETHERNET no pueden activarse a la vez"
+#endif
+
+#if defined(FEATURE_WIFI) && defined(FEATURE_ANCILLARY_PIN_CONTROL)
+  #error "FEATURE_WIFI usa los comandos \\W, que FEATURE_ANCILLARY_PIN_CONTROL también usa (\\Wxxyyy)"
+#endif
+
+#if defined(FEATURE_WEB_SERVER) && !defined(FEATURE_WIFI)
+  #error "FEATURE_WEB_SERVER requiere FEATURE_WIFI"
+#endif

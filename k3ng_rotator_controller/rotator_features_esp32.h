@@ -16,13 +16,14 @@
 // #define FEATURE_EASYCOM_EMULATION      // Easycom protocol emulation on control port
 // #define FEATURE_DCU_1_EMULATION        // DCU-1 protocol emulation on control port (only supports azimuth only systems)
 
-// #define FEATURE_MOON_TRACKING
-// #define FEATURE_SUN_TRACKING
-// #define FEATURE_CLOCK
+#define FEATURE_MOON_TRACKING
+#define FEATURE_SUN_TRACKING
+#define FEATURE_CLOCK                     // la hora se sincroniza por NTP (FEATURE_WIFI)
 // #define FEATURE_GPS
 // #define FEATURE_RTC_DS1307
 // #define FEATURE_RTC_PCF8583
 // #define FEATURE_ETHERNET
+#define FEATURE_WIFI                      // WiFi en modo estación + puerto serie virtual por TCP + NTP (solo ESP32; ajustes WIFI_* en rotator_settings_esp32.h)
 // #define FEATURE_STEPPER_MOTOR    // Requires TimerFive library to be copied to the Arduino libraries directory (If using OPTION_STEPPER_MOTOR_USE_TIMER_ONE_INSTEAD_OF_FIVE below, copy the TimeOne library)
 // #define FEATURE_AUTOCORRECT
 // #define FEATURE_TEST_DISPLAY_AT_STARTUP  
