@@ -120,7 +120,7 @@ byte station_location_set_from_grid(const char * grid_in, char * grid_out){
   }
   char grid[7];
   for (byte i = 0; i < 6; i++) {
-    char c = grid_in[i];
+    unsigned char c = (unsigned char)grid_in[i];     // ctype con char negativo (UTF-8) es comportamiento indefinido
     if ((i == 2) || (i == 3)) {
       if (!isdigit(c)) { return 0; }
       grid[i] = c;

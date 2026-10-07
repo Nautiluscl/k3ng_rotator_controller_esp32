@@ -235,3 +235,26 @@ el seguimiento, la parada general y el locator válido e inválido.
   sustituye por `ESP.restart()`.
 
 **Resultado:** compila sin avisos. RAM al 16,3 % y flash al 57,4 %.
+
+## 2026-10-07: correcciones de la etapa 4 tras la revisión
+
+Correcciones a partir de la revisión con un subagente Sonnet:
+- **Seguimiento con el sensor recién caído:** la tarea web validaba la hora, el BNO055 y el
+  arranque con una copia del estado de hasta 200 ms de antigüedad. Ahora el loop lo vuelve a
+  comprobar con el estado real antes de activar el seguimiento. Además, cuando el BNO055
+  entra en `FAULT` se desactiva cualquier seguimiento.
+- **Keepalive atrasado:** el navegador usa varias conexiones, y un keepalive en vuelo podía
+  llegar después del release y volver a mover el eje durante 1 s. Ahora cada carga de la
+  página tiene un `sid` aleatorio y cada pulsación un `seq` creciente. El firmware descarta
+  las órdenes de una pulsación ya soltada.
+- **STOP con prioridad:** ya no pasa por la cola, que podía estar llena. La tarea web levanta
+  una marca y el loop la atiende antes que cualquier otra orden.
+- **Multitouch:** soltar un botón que ya no es el activo no detiene el que sigue pulsado.
+- **Sin conexión:** las peticiones de la página tienen un timeout de 3 s. Si la WiFi cae con
+  una conexión colgada, la página sigue consultando y avisa "Sin conexión".
+- **Hombre muerto:** cuando vence, el eje solo se para si sigue moviéndose en la dirección
+  que pidió la web. Si otro puerto lo ha tomado entretanto, no se interfiere.
+- **Locator:** las funciones `isdigit`, `isalpha` y `toupper` reciben `unsigned char`, porque
+  un byte UTF-8 negativo es comportamiento indefinido.
+- `tools/web_preview.py` aplica la misma regla de `sid`/`seq` y se probó el descarte del
+  keepalive atrasado.

@@ -23659,6 +23659,9 @@ byte bno055_read_elevation(float * result){
     if (bno055_consecutive_failures >= BNO055_FAIL_THRESHOLD) {
       bno055_state = BNO055_STATE_FAULT;
       bno055_smoothing_seeded = 0;
+      #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
+        change_tracking(DEACTIVATE_ALL);    // sin elevación fiable no se sigue nada
+      #endif
       bno055_last_reinit_attempt = millis();
       if (current_el_state() != NOT_DOING_ANYTHING) {
         submit_request(EL, REQUEST_KILL, 0, DBG_BNO055_SENSOR_FAULT);

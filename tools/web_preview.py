@@ -49,6 +49,7 @@ class Rotor:
         self.az, self.el = 123.4, 15.0
         self.jog = {"az": None, "el": None}
         self.keepalive = {"az": 0.0, "el": 0.0}
+        self.released = {"az": (0, 0), "el": (0, 0)}   # (sid, seq) de la última pulsación soltada
         self.track = None
         self.grid = "FF46pn"
         self.start = time.time()
@@ -128,19 +129,27 @@ class Handler(BaseHTTPRequestHandler):
             rotor.step()
             if path == "/api/move":
                 d = args.get("dir", "")
+                sid, seq = int(args.get("sid", 0)), int(args.get("seq", 0))
                 if d == "release":
                     for axis in ([args["axis"]] if args.get("axis") in ("az", "el") else ["az", "el"]):
                         rotor.jog[axis] = None
+                        rotor.released[axis] = (sid, seq)
                     return self.result(True)
                 axis = {"cw": "az", "ccw": "az", "up": "el", "down": "el"}.get(d)
                 if not axis:
                     return self.result(False, "Dirección no válida")
+                rs, rq = rotor.released[axis]
+                if sid == rs and seq <= rq:
+                    print("keepalive atrasado descartado:", d, seq)
+                    return self.result(True)
                 rotor.track = None
                 rotor.jog[axis] = d
                 rotor.keepalive[axis] = time.time()
                 return self.result(True)
             if path == "/api/stop":
                 rotor.jog = {"az": None, "el": None}
+                sid, seq = int(args.get("sid", 0)), int(args.get("seq", 0))
+                rotor.released = {"az": (sid, seq), "el": (sid, seq)}
                 rotor.track = None
                 return self.result(True, "Movimiento detenido")
             if path == "/api/track":

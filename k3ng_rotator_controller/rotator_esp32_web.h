@@ -94,9 +94,12 @@ button:disabled{opacity:.4}
 </section>
 </main>
 <script>
-const $=id=>document.getElementById(id);let S={},held=null,hbT=null,fails=0;
+const $=id=>document.getElementById(id);let S={},held=null,heldBtn=null,hbT=null,fails=0,seq=0;
+const sid=1+Math.floor(Math.random()*2e9);
 function msg(t,e){const m=$('msg');m.textContent=t||'';m.className=e?'err':''}
-async function post(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(b||{})});
+async function req(u,o){const c=new AbortController(),t=setTimeout(()=>c.abort(),3000);
+ try{return await fetch(u,Object.assign({signal:c.signal,cache:'no-store'},o||{}))}finally{clearTimeout(t)}}
+async function post(u,b){const r=await req(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(b||{})});
  const j=await r.json().catch(()=>({ok:false,msg:'Respuesta inválida'}));if(!j.ok)throw new Error(j.msg||'Error');return j}
 function f1(v){return(Math.round(v*10)/10).toFixed(1)+'°'}
 function dur(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return(d?d+'d ':'')+h+'h '+m+'m'}
@@ -113,22 +116,25 @@ function render(j){S=j;
  $('rssi').textContent=j.wifi.ok?j.wifi.rssi+' dBm ('+bars(j.wifi.rssi)+')':'--';$('ip').textContent=j.wifi.ip||'--';
  $('up').textContent=dur(j.uptime);$('rst').textContent=j.rst;$('utc').textContent=j.time_ok?j.utc:'sin sincronizar';
  $('bno').textContent=j.bno;$('grid').textContent=j.grid}
-async function poll(){try{const r=await fetch('/api/status',{cache:'no-store'});render(await r.json());
+async function poll(){try{const r=await req('/api/status');render(await r.json());
  if(fails){msg('')}fails=0}catch(e){if(++fails>1)msg('Sin conexión con el rotor',1)}
  setTimeout(poll,held?500:1000)}
-function release(){if(!held)return;const d=held;held=null;clearInterval(hbT);
+// sid+seq: cada pulsación lleva un número creciente; el firmware descarta un keepalive
+// atrasado que llegue después de soltar ese mismo botón
+function release(){if(!held)return;const d=held;held=null;heldBtn=null;clearInterval(hbT);hbT=null;
  document.querySelectorAll('[data-d]').forEach(b=>b.classList.remove('on'));
- post('/api/move',{dir:'release',axis:(d=='cw'||d=='ccw')?'az':'el'}).catch(e=>msg(e.message,1))}
+ post('/api/move',{dir:'release',axis:(d=='cw'||d=='ccw')?'az':'el',sid:sid,seq:seq}).catch(e=>msg(e.message,1))}
 document.querySelectorAll('[data-d]').forEach(b=>{
- b.addEventListener('pointerdown',e=>{e.preventDefault();if(held)release();held=b.dataset.d;b.classList.add('on');
+ b.addEventListener('pointerdown',e=>{e.preventDefault();if(held)release();held=b.dataset.d;heldBtn=b;seq++;b.classList.add('on');
   b.setPointerCapture(e.pointerId);if(navigator.vibrate)navigator.vibrate(15);
-  const go=()=>post('/api/move',{dir:held||'release'}).catch(err=>{msg(err.message,1);release()});
-  go();hbT=setInterval(()=>{if(held)go()},%KEEPALIVE%)});
- ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>b.addEventListener(ev,release));
+  const d=held,n=seq,go=()=>{if(held===d&&seq===n)post('/api/move',{dir:d,sid:sid,seq:n}).catch(err=>{msg(err.message,1);release()})};
+  go();hbT=setInterval(go,%KEEPALIVE%)});
+ // con varios dedos, soltar un botón que ya no es el activo no detiene el otro
+ ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>b.addEventListener(ev,()=>{if(heldBtn===b)release()}));
  b.addEventListener('contextmenu',e=>e.preventDefault())});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)release()});
 $('stop').addEventListener('click',async()=>{release();if(navigator.vibrate)navigator.vibrate([30,40,30]);
- try{await post('/api/stop');msg('Movimiento detenido')}catch(e){msg(e.message,1)}});
+ try{await post('/api/stop',{sid:sid,seq:seq});msg('Movimiento detenido')}catch(e){msg(e.message,1)}});
 ['sun','moon'].forEach(t=>$(t).addEventListener('click',async()=>{const on=S[t]&&S[t].trk?0:1;
  try{const j=await post('/api/track',{target:t,on:on});msg(j.msg)}catch(e){msg(e.message,1)}}));
 $('locf').addEventListener('submit',async e=>{e.preventDefault();const g=$('loci').value.trim();
@@ -156,7 +162,6 @@ poll();
 
 #define WEB_CMD_MOVE 1
 #define WEB_CMD_RELEASE 2
-#define WEB_CMD_STOP 3
 #define WEB_CMD_TRACK 4
 #define WEB_CMD_LOCATOR 5
 
@@ -170,6 +175,8 @@ struct web_command_t {
   byte target;        // WEB_TARGET_SUN / WEB_TARGET_MOON
   byte on;
   char grid[7];
+  uint32_t sid;       // sesión de la página (aleatoria por carga)
+  uint32_t seq;       // número de pulsación dentro de la sesión
 };
 
 struct web_snapshot_t {
@@ -204,6 +211,17 @@ byte web_jog_az_request = REQUEST_STOP;
 byte web_jog_el_request = REQUEST_STOP;
 unsigned long web_jog_az_last_keepalive = 0;
 unsigned long web_jog_el_last_keepalive = 0;
+
+// última pulsación soltada por eje (0 = AZ, 1 = EL): un keepalive atrasado de esa misma
+// pulsación, que llegue después del release, se descarta en lugar de volver a mover el eje
+uint32_t web_jog_released_sid[2] = {0, 0};
+uint32_t web_jog_released_seq[2] = {0, 0};
+
+// STOP no pasa por la cola (que podría estar llena): la tarea web levanta esta marca y el
+// loop la atiende antes que cualquier otra orden
+volatile byte web_stop_pending = 0;
+volatile uint32_t web_stop_sid = 0;
+volatile uint32_t web_stop_seq = 0;
 
 // ==============================================================
 //  Lado del loop (núcleo 1)
@@ -295,20 +313,65 @@ void web_update_snapshot(){
 }
 
 // --------------------------------------------------------------
-void web_stop_axis(byte axis){
+byte web_request_to_state(byte request){
 
+  switch (request) {
+    case REQUEST_CW: return ROTATING_CW;
+    case REQUEST_CCW: return ROTATING_CCW;
+    case REQUEST_UP: return ROTATING_UP;
+    case REQUEST_DOWN: return ROTATING_DOWN;
+    default: return NOT_DOING_ANYTHING;
+  }
+
+}
+
+// --------------------------------------------------------------
+void web_stop_axis(byte axis, byte only_if_ours){
+
+  // only_if_ours: el eje solo se para si sigue moviéndose en la dirección que pidió la web;
+  // si entretanto otro puerto (Yaesu, seguimiento) lo ha tomado, no se interfiere
   if (axis == AZ) {
     if (web_jog_az_request != REQUEST_STOP) {
-      submit_request(AZ, REQUEST_STOP, 0, DBG_WEB_INTERFACE);
+      if (!only_if_ours || (current_az_state() == web_request_to_state(web_jog_az_request))) {
+        submit_request(AZ, REQUEST_STOP, 0, DBG_WEB_INTERFACE);
+      }
       web_jog_az_request = REQUEST_STOP;
     }
   } else {
     #if defined(FEATURE_ELEVATION_CONTROL)
       if (web_jog_el_request != REQUEST_STOP) {
-        submit_request(EL, REQUEST_STOP, 0, DBG_WEB_INTERFACE);
+        if (!only_if_ours || (current_el_state() == web_request_to_state(web_jog_el_request))) {
+          submit_request(EL, REQUEST_STOP, 0, DBG_WEB_INTERFACE);
+        }
         web_jog_el_request = REQUEST_STOP;
       }
     #endif
+  }
+
+}
+
+// --------------------------------------------------------------
+void web_apply_stop(uint32_t sid, uint32_t seq){
+
+  // parada inmediata (sin rampa) de ambos ejes y fin de cualquier seguimiento
+  #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
+    change_tracking(DEACTIVATE_ALL);
+  #endif
+  #ifdef FEATURE_PARK
+    deactivate_park();
+  #endif
+  #ifdef FEATURE_TIMED_BUFFER
+    clear_timed_buffer();
+  #endif
+  submit_request(AZ, REQUEST_KILL, 0, DBG_WEB_STOP);
+  #if defined(FEATURE_ELEVATION_CONTROL)
+    submit_request(EL, REQUEST_KILL, 0, DBG_WEB_STOP);
+  #endif
+  web_jog_az_request = REQUEST_STOP;
+  web_jog_el_request = REQUEST_STOP;
+  for (byte i = 0; i < 2; i++) {
+    web_jog_released_sid[i] = sid;
+    web_jog_released_seq[i] = seq;
   }
 
 }
@@ -319,6 +382,12 @@ void web_apply_command(web_command_t * cmd){
   switch (cmd->type) {
 
     case WEB_CMD_MOVE:
+      {
+        byte i = (cmd->axis == AZ) ? 0 : 1;
+        if ((cmd->sid == web_jog_released_sid[i]) && (cmd->seq <= web_jog_released_seq[i])) {
+          break;      // keepalive de una pulsación ya soltada (llegó por otra conexión, tarde)
+        }
+      }
       // se vuelve a comprobar aquí: entre la petición y este punto el sensor pudo fallar
       if (!web_rotation_allowed()) { break; }
       #if defined(FEATURE_EL_POSITION_BNO055)
@@ -355,30 +424,30 @@ void web_apply_command(web_command_t * cmd){
       break;
 
     case WEB_CMD_RELEASE:
-      if ((cmd->axis == AZ) || (cmd->axis == 0)) { web_stop_axis(AZ); }
-      if ((cmd->axis == EL) || (cmd->axis == 0)) { web_stop_axis(EL); }
-      break;
-
-    case WEB_CMD_STOP:
-      // parada inmediata (sin rampa) de ambos ejes y fin de cualquier seguimiento
-      #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
-        change_tracking(DEACTIVATE_ALL);
-      #endif
-      #ifdef FEATURE_PARK
-        deactivate_park();
-      #endif
-      #ifdef FEATURE_TIMED_BUFFER
-        clear_timed_buffer();
-      #endif
-      submit_request(AZ, REQUEST_KILL, 0, DBG_WEB_STOP);
-      #if defined(FEATURE_ELEVATION_CONTROL)
-        submit_request(EL, REQUEST_KILL, 0, DBG_WEB_STOP);
-      #endif
-      web_jog_az_request = REQUEST_STOP;
-      web_jog_el_request = REQUEST_STOP;
+      if ((cmd->axis == AZ) || (cmd->axis == 0)) {
+        web_stop_axis(AZ, 0);
+        web_jog_released_sid[0] = cmd->sid;
+        web_jog_released_seq[0] = cmd->seq;
+      }
+      if ((cmd->axis == EL) || (cmd->axis == 0)) {
+        web_stop_axis(EL, 0);
+        web_jog_released_sid[1] = cmd->sid;
+        web_jog_released_seq[1] = cmd->seq;
+      }
       break;
 
     case WEB_CMD_TRACK:
+      // la tarea web validó con una copia del estado de hasta WEB_SNAPSHOT_INTERVAL_MS; se
+      // repite aquí con el estado real antes de activar
+      if (cmd->on) {
+        if (!web_rotation_allowed()) { break; }
+        #if defined(FEATURE_CLOCK)
+          if (!ntp_synced) { break; }
+        #endif
+        #if defined(FEATURE_EL_POSITION_BNO055)
+          if (bno055_state != BNO055_STATE_OK) { break; }
+        #endif
+      }
       web_jog_az_request = REQUEST_STOP;
       web_jog_el_request = REQUEST_STOP;
       #if defined(FEATURE_SUN_TRACKING)
@@ -428,6 +497,12 @@ void service_web_server(){
     return;
   }
 
+  if (web_stop_pending) {
+    web_stop_pending = 0;
+    web_apply_stop(web_stop_sid, web_stop_seq);
+    web_snapshot_last_update = 0;
+  }
+
   web_command_t cmd;
   while (xQueueReceive(web_command_queue, &cmd, 0) == pdTRUE) {
     web_apply_command(&cmd);
@@ -435,13 +510,13 @@ void service_web_server(){
 
   // hombre muerto: sin keepalive de la página, el eje se detiene solo
   if ((web_jog_az_request != REQUEST_STOP) && ((millis() - web_jog_az_last_keepalive) > WEB_JOG_TIMEOUT_MS)) {
-    web_stop_axis(AZ);
+    web_stop_axis(AZ, 1);
     #ifdef DEBUG_ETHERNET
       debug.println(F("service_web_server: az jog keepalive timeout"));
     #endif
   }
   if ((web_jog_el_request != REQUEST_STOP) && ((millis() - web_jog_el_last_keepalive) > WEB_JOG_TIMEOUT_MS)) {
-    web_stop_axis(EL);
+    web_stop_axis(EL, 1);
     #ifdef DEBUG_ETHERNET
       debug.println(F("service_web_server: el jog keepalive timeout"));
     #endif
@@ -502,6 +577,13 @@ void web_send_result(byte ok, const char * message){
   snprintf(json, sizeof(json), "{\"ok\":%s,\"msg\":\"%s\"}", ok ? "true" : "false", escaped);
   web_server.sendHeader("Cache-Control", "no-store");
   web_server.send(ok ? 200 : 400, "application/json", json);
+
+}
+
+// --------------------------------------------------------------
+uint32_t web_arg_u32(const char * name){
+
+  return (uint32_t)strtoul(web_server.arg(name).c_str(), NULL, 10);
 
 }
 
@@ -582,6 +664,8 @@ void web_handle_move(){
   web_command_t cmd;
   memset(&cmd, 0, sizeof(cmd));
   cmd.type = WEB_CMD_MOVE;
+  cmd.sid = web_arg_u32("sid");
+  cmd.seq = web_arg_u32("seq");
 
   String dir = web_server.arg("dir");
   if (dir == "cw") { cmd.axis = AZ; cmd.request = REQUEST_CW; }
@@ -631,12 +715,11 @@ void web_handle_stop(){
     return;
   }
 
-  web_command_t cmd;
-  memset(&cmd, 0, sizeof(cmd));
-  cmd.type = WEB_CMD_STOP;
-  if (web_queue_command(&cmd)) {
-    web_send_result(1, "Movimiento detenido");
-  }
+  // sin cola: no puede fallar por cola llena
+  web_stop_sid = web_arg_u32("sid");
+  web_stop_seq = web_arg_u32("seq");
+  web_stop_pending = 1;
+  web_send_result(1, "Movimiento detenido");
 
 }
 
@@ -703,7 +786,7 @@ byte web_normalize_grid(const char * grid_in, char * grid_out){
     return 0;
   }
   for (byte i = 0; i < 6; i++) {
-    char c = grid_in[i];
+    unsigned char c = (unsigned char)grid_in[i];     // ctype con char negativo (UTF-8) es comportamiento indefinido
     if ((i == 2) || (i == 3)) {
       if (!isdigit(c)) { return 0; }
       grid_out[i] = c;
