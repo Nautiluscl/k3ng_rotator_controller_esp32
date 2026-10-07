@@ -410,5 +410,22 @@ You can tweak these, but read the online documentation!
   #define ELEVATION_STEPPER_ENABLE_PIN 9 // Change as needed
 #endif
 
+/* ---------------------- Bosch BNO055 (FEATURE_EL_POSITION_BNO055) ----------------------
 
-
+   Elevación = atan2(NUMERADOR, DENOMINADOR) sobre el vector de gravedad, en grados.
+   Con el sensor plano (eje Z vertical) y el eje Y apuntando a lo largo del boom, atan2(y, z)
+   da 0° con la antena horizontal y 90° apuntando al cénit. Si el sensor se monta girado,
+   se cambian los ejes (g.x(), g.y(), g.z()) o se invierte el signo.
+*/
+#define BNO055_I2C_ADDRESS 0x28                    // 0x29 si el pin ADR está a VCC
+#define BNO055_ELEVATION_NUMERATOR(g) (g.y())
+#define BNO055_ELEVATION_DENOMINATOR(g) (g.z())
+#define BNO055_ELEVATION_INVERT 0                  // 1 = invertir el signo de la elevación
+#define BNO055_USE_EXTERNAL_CRYSTAL true           // los módulos de Adafruit y GY-BNO055 llevan cristal de 32 kHz
+#define BNO055_RESET_PIN 0                         // GPIO conectado a RST del BNO055 (0 = sin reset por hardware; sugerido: 23)
+#define BNO055_I2C_CLOCK_HZ 100000                 // el BNO055 usa clock stretching: no subir de 100 kHz
+#define BNO055_I2C_TIMEOUT_MS 200
+#define BNO055_FAIL_THRESHOLD 10                   // lecturas inválidas seguidas antes de declarar fallo
+#define BNO055_REINIT_INTERVAL_MS 10000            // reintento de inicialización tras un fallo
+#define BNO055_GRAVITY_MIN 7.0                     // m/s2: un vector de gravedad fuera de este rango es una lectura inválida
+#define BNO055_GRAVITY_MAX 12.5

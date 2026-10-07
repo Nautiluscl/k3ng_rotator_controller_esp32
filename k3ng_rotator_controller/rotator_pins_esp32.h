@@ -212,8 +212,8 @@
 //#define reset_pin 22 // if defined, goes HIGH to reset unit
 
 #if defined(FEATURE_AZ_POSITION_A2_ABSOLUTE_ENCODER) || defined(FEATURE_EL_POSITION_A2_ABSOLUTE_ENCODER)
-  #define pin_sei_bus_busy 24
-  #define pin_sei_bus_send_receive 22  
+  #define pin_sei_bus_busy 0
+  #define pin_sei_bus_send_receive 0
 #endif
 
 #ifdef FEATURE_YWROBOT_I2C_DISPLAY

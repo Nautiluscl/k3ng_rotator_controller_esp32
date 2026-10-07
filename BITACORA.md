@@ -65,3 +65,37 @@ Documentos relacionados:
   siempre, lo que exige `LiquidCrystal.h`. Se excluye del build en este perfil.
 
 **Resultado:** compila sin errores ni avisos. RAM al 7,4 % y flash al 18,5 %.
+
+## 2026-10-07: etapa 2, elevación con Bosch BNO055
+
+**Cambios**
+- Nueva función `FEATURE_EL_POSITION_BNO055`, activa en el perfil ESP32 junto a
+  `FEATURE_ELEVATION_CONTROL`. Sigue el patrón del ADXL345 de Adafruit: include, instancia,
+  `begin()` en `initialize_peripherals()` y bloque en `read_elevation()`.
+- El sensor trabaja en modo **IMUPLUS** (acelerómetro y giróscopo, sin magnetómetro).
+  La elevación se calcula como `atan2(numerador, denominador)` sobre `VECTOR_GRAVITY`.
+  Los ejes y el signo se configuran con macros en `rotator_settings_esp32.h`
+  (`BNO055_ELEVATION_NUMERATOR/DENOMINATOR/INVERT`).
+- Sobre la lectura se aplican la corrección (`FEATURE_ELEVATION_CORRECTION`), el offset de
+  configuración y un suavizado propio en `float`. El suavizado original guarda el valor
+  anterior en un `unsigned int` y perdería los decimales.
+- I2C a 100 kHz con `Wire.setTimeOut()`, porque el BNO055 usa clock stretching. Reset por
+  hardware opcional con `BNO055_RESET_PIN`.
+- Detección de fallos:
+  - Un vector de gravedad fuera de 7 a 12,5 m/s² cuenta como lectura inválida (con el
+    sensor desconectado, la librería devuelve ceros).
+  - Tras `BNO055_FAIL_THRESHOLD` lecturas inválidas seguidas, el sensor pasa a `FAULT` y
+    se detiene la elevación (`REQUEST_KILL`, `DBG_BNO055_SENSOR_FAULT`).
+  - Mientras el sensor no esté operativo, se cancela cualquier orden de elevación.
+  - Cada 10 s se reintenta la inicialización, solo con el rotor parado, porque `begin()`
+    puede bloquear cerca de 1 s.
+- Calibración, con offsets guardados en `Preferences` (namespace `bno055`) y restaurados al
+  arrancar:
+  - `\XB`: muestra estado, nivel de calibración (SYS, G, A), si hay offsets restaurados y
+    la elevación sin procesar.
+  - `\XBS`: guarda los offsets; exige acelerómetro y giróscopo en nivel 3.
+  - `\XBC`: borra los offsets guardados.
+- `rotator_dependencies.h`: el BNO055 se añade a las listas de sensores válidos y de
+  activación de Wire, y es incompatible con otros sensores de elevación.
+
+**Resultado:** compila sin avisos. RAM al 7,5 % y flash al 19,1 %.

@@ -1201,6 +1201,14 @@
   #include <ADXL345.h>  // required for elevation ADXL345 accelerometer using Love Electronics ADXL345 library
 #endif
 
+#if defined(FEATURE_EL_POSITION_BNO055)
+  #include <Adafruit_Sensor.h>
+  #include <Adafruit_BNO055.h>    // elevación (inclinación) con Bosch BNO055 (FEATURE_EL_POSITION_BNO055)
+  #if defined(ARDUINO_ARCH_ESP32)
+    #include <Preferences.h>      // offsets de calibración del BNO055
+  #endif
+#endif
+
 #if defined(FEATURE_EL_POSITION_ADXL345_USING_ADAFRUIT_LIB)
   #include <Adafruit_ADXL345_U.h>   // required for elevation ADXL345 accelerometer using Adafruit ADXL345 library (FEATURE_EL_POSITION_ADXL345_USING_ADAFRUIT_LIB)
 #endif
@@ -1746,6 +1754,15 @@ struct config_t {
 #ifdef FEATURE_EL_POSITION_ADXL345_USING_LOVE_ELECTRON_LIB
   ADXL345 accel;
 #endif //FEATURE_EL_POSITION_ADXL345_USING_LOVE_ELECTRON_LIB
+
+#ifdef FEATURE_EL_POSITION_BNO055
+  Adafruit_BNO055 bno = Adafruit_BNO055(55, BNO055_I2C_ADDRESS, &Wire);
+  byte bno055_state = BNO055_STATE_NOT_FOUND;
+  byte bno055_consecutive_failures = 0;
+  byte bno055_offsets_restored = 0;
+  unsigned long bno055_last_reinit_attempt = 0;
+  float bno055_raw_elevation = 0;          // elevación sin corrección ni offset (diagnóstico)
+#endif //FEATURE_EL_POSITION_BNO055
 
 #ifdef FEATURE_EL_POSITION_ADXL345_USING_ADAFRUIT_LIB
   Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
@@ -10335,6 +10352,27 @@ void read_elevation(byte force_read){
       #endif
     #endif // FEATURE_EL_POSITION_ADXL345_USING_ADAFRUIT_LIB
 
+    #ifdef FEATURE_EL_POSITION_BNO055
+      float bno055_elevation;
+      if (bno055_read_elevation(&bno055_elevation)) {
+        static float bno055_smoothed_elevation = bno055_elevation;
+        bno055_raw_elevation = bno055_elevation;
+        #ifdef FEATURE_ELEVATION_CORRECTION
+          bno055_elevation = correct_elevation(bno055_elevation);
+        #endif // FEATURE_ELEVATION_CORRECTION
+        #if !defined(FEATURE_CALIBRATION)
+          bno055_elevation = bno055_elevation + configuration.elevation_offset;
+        #endif
+        // suavizado propio en float (previous_elevation es unsigned int y perdería decimales)
+        if (ELEVATION_SMOOTHING_FACTOR > 0) {
+          bno055_smoothed_elevation = (bno055_elevation * ((float)1 - ((float)ELEVATION_SMOOTHING_FACTOR / (float)100))) + (bno055_smoothed_elevation * ((float)ELEVATION_SMOOTHING_FACTOR / (float)100));
+          bno055_elevation = bno055_smoothed_elevation;
+        }
+        elevation = bno055_elevation;
+      }
+      // si la lectura falla se conserva el último valor válido; bno055_read_elevation() gestiona la parada
+    #endif // FEATURE_EL_POSITION_BNO055
+
 
 
     #ifdef FEATURE_EL_POSITION_ADAFRUIT_LSM303
@@ -11799,6 +11837,14 @@ void initialize_peripherals(){
   #ifdef FEATURE_EL_POSITION_ADXL345_USING_ADAFRUIT_LIB
     accel.begin();
   #endif // FEATURE_EL_POSITION_ADXL345_USING_ADAFRUIT_LIB
+
+  #ifdef FEATURE_EL_POSITION_BNO055
+    if (bno055_initialize()) {
+      control_port->println(F("BNO055: OK"));
+    } else {
+      control_port->println(F("BNO055: not found - elevation unavailable"));
+    }
+  #endif // FEATURE_EL_POSITION_BNO055
 
   #ifdef FEATURE_JOYSTICK_CONTROL
     pinModeEnhanced(pin_joystick_x, INPUT);
@@ -16368,6 +16414,26 @@ byte process_backslash_command(byte input_buffer[], int input_buffer_index, byte
   #if !defined(FEATURE_CALIBRATION)
     case 'X':
       switch (toupper(input_buffer[2])) {
+        #if defined(FEATURE_EL_POSITION_BNO055)
+        case 'B':  // \XB - estado del BNO055, \XBS - guardar offsets de calibración, \XBC - borrar offsets
+          if (input_buffer_index > 3) {
+            if (toupper(input_buffer[3]) == 'S') {
+              if (bno055_save_offsets()) {
+                strcpy_P(return_string, (const char*) F("BNO055 offsets saved"));
+              } else {
+                strcpy_P(return_string, (const char*) F("Error: BNO055 not calibrated"));
+              }
+              break;
+            }
+            if (toupper(input_buffer[3]) == 'C') {
+              bno055_clear_offsets();
+              strcpy_P(return_string, (const char*) F("BNO055 offsets cleared"));
+              break;
+            }
+          }
+          bno055_status_string(return_string);
+          break;
+        #endif // FEATURE_EL_POSITION_BNO055
         #if defined(FEATURE_SUN_TRACKING)
         case 'S': 
           update_sun_position();
@@ -23423,3 +23489,202 @@ byte submit_remote_command(byte remote_command_to_send, byte parm1, int parm2){
 
 
 // that's all, folks !
+
+// --------------------------------------------------------------
+#ifdef FEATURE_EL_POSITION_BNO055
+/*
+  Bosch BNO055 como sensor de elevación (solo inclinación).
+
+  Se trabaja en modo IMUPLUS (acelerómetro + giróscopo, sin magnetómetro): la inclinación se
+  refiere a la gravedad, y así los campos magnéticos de los motores no afectan a la lectura.
+  La elevación sale del vector de gravedad con atan2(), que se comporta bien cerca de 90°,
+  al contrario que los ángulos de Euler.
+*/
+
+byte bno055_initialize(){
+
+  bno055_last_reinit_attempt = millis();
+
+  #if (BNO055_RESET_PIN > 0)
+    pinMode(BNO055_RESET_PIN, OUTPUT);
+    digitalWrite(BNO055_RESET_PIN, LOW);
+    delay(2);
+    digitalWrite(BNO055_RESET_PIN, HIGH);
+    delay(700);   // el BNO055 tarda unos 650 ms en arrancar tras un reset
+  #endif
+
+  if (!bno.begin(OPERATION_MODE_IMUPLUS)) {
+    bno055_state = BNO055_STATE_NOT_FOUND;
+    return 0;
+  }
+
+  // begin() inicializa Wire; el BNO055 usa clock stretching, así que se limita el bus a 100 kHz
+  Wire.setClock(BNO055_I2C_CLOCK_HZ);
+  #if defined(ARDUINO_ARCH_ESP32)
+    Wire.setTimeOut(BNO055_I2C_TIMEOUT_MS);
+  #endif
+
+  bno.setExtCrystalUse(BNO055_USE_EXTERNAL_CRYSTAL);
+  bno055_restore_offsets();
+
+  bno055_state = BNO055_STATE_OK;
+  bno055_consecutive_failures = 0;
+  return 1;
+
+}
+
+// --------------------------------------------------------------
+byte bno055_read_elevation(float * result){
+
+  // Devuelve 1 si la lectura es válida. Ante fallos repetidos marca el sensor como averiado,
+  // detiene la elevación y reintenta la inicialización cada BNO055_REINIT_INTERVAL_MS.
+
+  if (bno055_state != BNO055_STATE_OK) {
+    // begin() de la librería puede bloquear el loop cerca de 1 s si el sensor no responde:
+    // solo se reintenta con el rotor parado
+    if (((millis() - bno055_last_reinit_attempt) > BNO055_REINIT_INTERVAL_MS) && (current_az_state() == NOT_DOING_ANYTHING) && (current_el_state() == NOT_DOING_ANYTHING)) {
+      if (bno055_initialize()) {
+        control_port->println(F("BNO055: recovered"));
+      }
+    }
+    if (bno055_state != BNO055_STATE_OK) {
+      // sin sensor no se sabe dónde está la elevación: no se permite moverla
+      if (current_el_state() != NOT_DOING_ANYTHING) {
+        submit_request(EL, REQUEST_KILL, 0, DBG_BNO055_SENSOR_FAULT);
+      }
+      return 0;
+    }
+  }
+
+  imu::Vector<3> g = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY);
+  float magnitude = sqrt((g.x() * g.x()) + (g.y() * g.y()) + (g.z() * g.z()));
+
+  // Con el sensor desconectado o el bus colgado la librería devuelve ceros:
+  // un vector de gravedad fuera de rango se trata como lectura fallida
+  if ((magnitude < BNO055_GRAVITY_MIN) || (magnitude > BNO055_GRAVITY_MAX)) {
+    if (bno055_consecutive_failures < 255) {
+      bno055_consecutive_failures++;
+    }
+    #ifdef DEBUG_BNO055
+      debug.print(F("bno055_read_elevation: invalid gravity vector, magnitude: "));
+      debug.println(magnitude);
+    #endif
+    if (bno055_consecutive_failures >= BNO055_FAIL_THRESHOLD) {
+      bno055_state = BNO055_STATE_FAULT;
+      bno055_last_reinit_attempt = millis();
+      if (current_el_state() != NOT_DOING_ANYTHING) {
+        submit_request(EL, REQUEST_KILL, 0, DBG_BNO055_SENSOR_FAULT);
+      }
+      control_port->println(F("BNO055: sensor fault - elevation stopped"));
+    }
+    return 0;
+  }
+
+  bno055_consecutive_failures = 0;
+
+  float el = atan2(BNO055_ELEVATION_NUMERATOR(g), BNO055_ELEVATION_DENOMINATOR(g)) * 180.0 / M_PI;
+  #if (BNO055_ELEVATION_INVERT == 1)
+    el = -el;
+  #endif
+
+  #ifdef DEBUG_BNO055
+    static unsigned long last_bno055_debug = 0;
+    if ((millis() - last_bno055_debug) > 2000) {
+      debug.print(F("bno055_read_elevation: g x:"));
+      debug.print(g.x());
+      debug.print(F(" y:"));
+      debug.print(g.y());
+      debug.print(F(" z:"));
+      debug.print(g.z());
+      debug.print(F(" el:"));
+      debug.println(el);
+      last_bno055_debug = millis();
+    }
+  #endif
+
+  *result = el;
+  return 1;
+
+}
+
+// --------------------------------------------------------------
+void bno055_restore_offsets(){
+
+  #if defined(ARDUINO_ARCH_ESP32)
+    Preferences prefs;
+    adafruit_bno055_offsets_t offsets;
+    bno055_offsets_restored = 0;
+    if (prefs.begin("bno055", true)) {
+      if (prefs.getBytesLength("ofs") == sizeof(offsets)) {
+        prefs.getBytes("ofs", &offsets, sizeof(offsets));
+        bno.setSensorOffsets(offsets);
+        bno055_offsets_restored = 1;
+      }
+      prefs.end();
+    }
+  #endif
+
+}
+
+// --------------------------------------------------------------
+byte bno055_save_offsets(){
+
+  // Solo guarda si acelerómetro y giróscopo están calibrados (nivel 3)
+  #if defined(ARDUINO_ARCH_ESP32)
+    adafruit_bno055_offsets_t offsets;
+    if ((bno055_state != BNO055_STATE_OK) || (!bno.getSensorOffsets(offsets))) {
+      return 0;
+    }
+    Preferences prefs;
+    if (!prefs.begin("bno055", false)) {
+      return 0;
+    }
+    size_t written = prefs.putBytes("ofs", &offsets, sizeof(offsets));
+    prefs.end();
+    bno055_offsets_restored = (written == sizeof(offsets));
+    return bno055_offsets_restored;
+  #else
+    return 0;
+  #endif
+
+}
+
+// --------------------------------------------------------------
+void bno055_clear_offsets(){
+
+  #if defined(ARDUINO_ARCH_ESP32)
+    Preferences prefs;
+    if (prefs.begin("bno055", false)) {
+      prefs.remove("ofs");
+      prefs.end();
+    }
+    bno055_offsets_restored = 0;
+  #endif
+
+}
+
+// --------------------------------------------------------------
+void bno055_status_string(char * return_string){
+
+  // Formato: "BNO055 OK SYS:3 G:3 A:3 OFS:1 EL:12.34"
+  char temp_string[16];
+  uint8_t cal_sys = 0, cal_gyro = 0, cal_accel = 0, cal_mag = 0;
+
+  strcpy(return_string, "BNO055 ");
+  switch (bno055_state) {
+    case BNO055_STATE_OK: strcat(return_string, "OK"); break;
+    case BNO055_STATE_FAULT: strcat(return_string, "FAULT"); break;
+    default: strcat(return_string, "NOT_FOUND"); break;
+  }
+  if (bno055_state == BNO055_STATE_OK) {
+    bno.getCalibration(&cal_sys, &cal_gyro, &cal_accel, &cal_mag);
+  }
+  sprintf(temp_string, " SYS:%u G:%u A:%u", cal_sys, cal_gyro, cal_accel);
+  strcat(return_string, temp_string);
+  strcat(return_string, bno055_offsets_restored ? " OFS:1" : " OFS:0");
+  strcat(return_string, " EL:");
+  dtostrf(bno055_raw_elevation, 0, 2, temp_string);
+  strcat(return_string, temp_string);
+
+}
+#endif // FEATURE_EL_POSITION_BNO055
