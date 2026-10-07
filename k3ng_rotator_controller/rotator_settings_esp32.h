@@ -443,7 +443,7 @@ You can tweak these, but read the online documentation!
 #define WIFI_TCP_PORT 23                            // puerto serie virtual (GS-232 / Easycom / comandos \)
 #define WIFI_MESSAGE_TIMEOUT_MS 5000                // se descarta un comando TCP incompleto pasado este tiempo
 #define WIFI_RECONNECT_INTERVAL_MS 15000
-#define WIFI_TCP_WRITE_TIMEOUT_MS 50                // espera máxima por intento de escritura TCP (hasta 10 intentos)
+#define WIFI_TCP_MAX_WRITE_FAILURES 3               // respuestas TCP que no caben seguidas antes de desconectar al cliente
 
 #define WIFI_USE_DHCP 1                             // 0 = IP fija con los valores siguientes
 #define WIFI_STATIC_IP 192,168,1,172

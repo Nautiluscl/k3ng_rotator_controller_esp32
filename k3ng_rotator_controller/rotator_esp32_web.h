@@ -127,8 +127,8 @@ function release(){if(!held)return;const d=held;held=null;heldBtn=null;clearInte
 document.querySelectorAll('[data-d]').forEach(b=>{
  b.addEventListener('pointerdown',e=>{e.preventDefault();if(held)release();held=b.dataset.d;heldBtn=b;seq++;b.classList.add('on');
   b.setPointerCapture(e.pointerId);if(navigator.vibrate)navigator.vibrate(15);
-  const d=held,n=seq,go=()=>{if(held===d&&seq===n)post('/api/move',{dir:d,sid:sid,seq:n}).catch(err=>{msg(err.message,1);release()})};
-  go();hbT=setInterval(go,%KEEPALIVE%)});
+  const d=held,n=seq,go=f=>{if(held===d&&seq===n)post('/api/move',{dir:d,sid:sid,seq:n,first:f?1:0}).catch(err=>{msg(err.message,1);release()})};
+  go(1);hbT=setInterval(()=>go(0),%KEEPALIVE%)});
  // con varios dedos, soltar un botón que ya no es el activo no detiene el otro
  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>b.addEventListener(ev,()=>{if(heldBtn===b)release()}));
  b.addEventListener('contextmenu',e=>e.preventDefault())});
@@ -175,8 +175,9 @@ struct web_command_t {
   byte target;        // WEB_TARGET_SUN / WEB_TARGET_MOON
   byte on;
   char grid[7];
-  uint32_t sid;       // sesión de la página (aleatoria por carga)
+  uint32_t sid;       // sesión de la página (aleatoria por carga); 0 = cliente sin sesión (curl, scripts)
   uint32_t seq;       // número de pulsación dentro de la sesión
+  byte first;         // 1 = primera orden de la pulsación; 0 = keepalive
 };
 
 struct web_snapshot_t {
@@ -313,36 +314,20 @@ void web_update_snapshot(){
 }
 
 // --------------------------------------------------------------
-byte web_request_to_state(byte request){
+void web_stop_axis(byte axis){
 
-  switch (request) {
-    case REQUEST_CW: return ROTATING_CW;
-    case REQUEST_CCW: return ROTATING_CCW;
-    case REQUEST_UP: return ROTATING_UP;
-    case REQUEST_DOWN: return ROTATING_DOWN;
-    default: return NOT_DOING_ANYTHING;
-  }
-
-}
-
-// --------------------------------------------------------------
-void web_stop_axis(byte axis, byte only_if_ours){
-
-  // only_if_ours: el eje solo se para si sigue moviéndose en la dirección que pidió la web;
-  // si entretanto otro puerto (Yaesu, seguimiento) lo ha tomado, no se interfiere
+  // Se para siempre, aunque otro puerto haya tomado el eje en el último segundo: no se puede
+  // saber con certeza (con arranque suave, un cambio de sentido pasa por estados del sentido
+  // contrario) y es preferible parar un movimiento ajeno a dejar uno propio sin control
   if (axis == AZ) {
     if (web_jog_az_request != REQUEST_STOP) {
-      if (!only_if_ours || (current_az_state() == web_request_to_state(web_jog_az_request))) {
-        submit_request(AZ, REQUEST_STOP, 0, DBG_WEB_INTERFACE);
-      }
+      submit_request(AZ, REQUEST_STOP, 0, DBG_WEB_INTERFACE);
       web_jog_az_request = REQUEST_STOP;
     }
   } else {
     #if defined(FEATURE_ELEVATION_CONTROL)
       if (web_jog_el_request != REQUEST_STOP) {
-        if (!only_if_ours || (current_el_state() == web_request_to_state(web_jog_el_request))) {
-          submit_request(EL, REQUEST_STOP, 0, DBG_WEB_INTERFACE);
-        }
+        submit_request(EL, REQUEST_STOP, 0, DBG_WEB_INTERFACE);
         web_jog_el_request = REQUEST_STOP;
       }
     #endif
@@ -384,8 +369,14 @@ void web_apply_command(web_command_t * cmd){
     case WEB_CMD_MOVE:
       {
         byte i = (cmd->axis == AZ) ? 0 : 1;
-        if ((cmd->sid == web_jog_released_sid[i]) && (cmd->seq <= web_jog_released_seq[i])) {
-          break;      // keepalive de una pulsación ya soltada (llegó por otra conexión, tarde)
+        if ((cmd->sid != 0) && (cmd->sid == web_jog_released_sid[i]) && (cmd->seq <= web_jog_released_seq[i])) {
+          break;      // orden de una pulsación ya soltada (llegó por otra conexión, tarde)
+        }
+        // un keepalive solo mantiene un movimiento web en curso; si el eje está parado (STOP
+        // desde otro móvil, hombre muerto, release) no lo vuelve a arrancar
+        byte jog_request = (cmd->axis == AZ) ? web_jog_az_request : web_jog_el_request;
+        if (!cmd->first && (jog_request == REQUEST_STOP)) {
+          break;
         }
       }
       // se vuelve a comprobar aquí: entre la petición y este punto el sensor pudo fallar
@@ -425,12 +416,12 @@ void web_apply_command(web_command_t * cmd){
 
     case WEB_CMD_RELEASE:
       if ((cmd->axis == AZ) || (cmd->axis == 0)) {
-        web_stop_axis(AZ, 0);
+        web_stop_axis(AZ);
         web_jog_released_sid[0] = cmd->sid;
         web_jog_released_seq[0] = cmd->seq;
       }
       if ((cmd->axis == EL) || (cmd->axis == 0)) {
-        web_stop_axis(EL, 0);
+        web_stop_axis(EL);
         web_jog_released_sid[1] = cmd->sid;
         web_jog_released_seq[1] = cmd->seq;
       }
@@ -499,6 +490,9 @@ void service_web_server(){
 
   if (web_stop_pending) {
     web_stop_pending = 0;
+    // STOP gana: se descartan las órdenes que ya estaban en la cola (un seguimiento encolado
+    // antes no debe activarse justo después de la parada)
+    xQueueReset(web_command_queue);
     web_apply_stop(web_stop_sid, web_stop_seq);
     web_snapshot_last_update = 0;
   }
@@ -510,13 +504,13 @@ void service_web_server(){
 
   // hombre muerto: sin keepalive de la página, el eje se detiene solo
   if ((web_jog_az_request != REQUEST_STOP) && ((millis() - web_jog_az_last_keepalive) > WEB_JOG_TIMEOUT_MS)) {
-    web_stop_axis(AZ, 1);
+    web_stop_axis(AZ);
     #ifdef DEBUG_ETHERNET
       debug.println(F("service_web_server: az jog keepalive timeout"));
     #endif
   }
   if ((web_jog_el_request != REQUEST_STOP) && ((millis() - web_jog_el_last_keepalive) > WEB_JOG_TIMEOUT_MS)) {
-    web_stop_axis(EL, 1);
+    web_stop_axis(EL);
     #ifdef DEBUG_ETHERNET
       debug.println(F("service_web_server: el jog keepalive timeout"));
     #endif
@@ -666,6 +660,9 @@ void web_handle_move(){
   cmd.type = WEB_CMD_MOVE;
   cmd.sid = web_arg_u32("sid");
   cmd.seq = web_arg_u32("seq");
+  // sin sesión (curl, scripts) cada orden cuenta como primera: arranca y mantiene el eje,
+  // pero hay que repetirla antes de WEB_JOG_TIMEOUT_MS
+  cmd.first = (cmd.sid == 0) ? 1 : (web_server.arg("first") == "1");
 
   String dir = web_server.arg("dir");
   if (dir == "cw") { cmd.axis = AZ; cmd.request = REQUEST_CW; }

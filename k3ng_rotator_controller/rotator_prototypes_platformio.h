@@ -31,6 +31,7 @@
   void service_wifi();
   void wifi_raw_line_feed(byte incoming_byte, byte source);
   void wifi_tcp_print(char * print_this);
+  void wifi_tcp_send(const char * text, byte add_newline);
   void wifi_backslash_command(byte input_buffer[], int input_buffer_index, byte source_port, char * return_string);
 #endif
 

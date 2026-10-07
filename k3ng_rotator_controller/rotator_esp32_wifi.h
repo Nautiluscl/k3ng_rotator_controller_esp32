@@ -17,8 +17,11 @@
 
 #define WIFI_RAW_LINE_SIZE 96
 
+#include <lwip/sockets.h>
+
 WiFiServer wifi_tcp_server(WIFI_TCP_PORT);
 WiFiClient wifi_tcp_client;
+byte wifi_tcp_write_failures = 0;
 
 char wifi_ssid[33] = "";
 char wifi_password[65] = "";
@@ -310,9 +313,7 @@ void service_wifi_tcp(){
     }
     wifi_tcp_client = new_client;
     wifi_tcp_client.setNoDelay(true);
-    // write() espera a que el socket admita datos hasta este tiempo (x10 reintentos): si el
-    // cliente deja de leer, el loop no se queda varios segundos bloqueado en println()
-    wifi_tcp_client.setConnectionTimeout(WIFI_TCP_WRITE_TIMEOUT_MS);
+    wifi_tcp_write_failures = 0;
     tcp_buffer_index = 0;
     telnet_state = 0;
     wifi_raw_line_reset(WIFI_RAW_SOURCE_TCP);
@@ -400,7 +401,7 @@ void service_wifi_tcp(){
           process_easycom_command(tcp_buffer, tcp_buffer_index, ETHERNET_PORT0, return_string);
         #endif
       }
-      wifi_tcp_client.println(return_string);
+      wifi_tcp_send(return_string, 1);
       tcp_buffer_index = 0;
     }
 
@@ -409,11 +410,61 @@ void service_wifi_tcp(){
 }
 
 // --------------------------------------------------------------
+void wifi_tcp_send(const char * text, byte add_newline){
+
+  // NetworkClient::write() del core espera hasta 1 s por intento y reintenta hasta 10 veces
+  // (valores fijos): con un cliente que deja de leer bloquearía el loop ~10 s y saltaría el
+  // watchdog. Aquí se comprueba con select() sin espera que el socket admite datos y se envía
+  // con MSG_DONTWAIT; si no cabe, la respuesta se descarta. Tras WIFI_TCP_MAX_WRITE_FAILURES
+  // fallos seguidos se da el cliente por perdido.
+
+  if (!wifi_tcp_client || !wifi_tcp_client.connected()) {
+    return;
+  }
+
+  int fd = wifi_tcp_client.fd();
+  if (fd < 0) {
+    return;
+  }
+
+  char buffer[112];
+  size_t length = strlen(text);
+  if (length > sizeof(buffer) - 3) {
+    length = sizeof(buffer) - 3;
+  }
+  memcpy(buffer, text, length);
+  if (add_newline) {
+    buffer[length++] = '\r';
+    buffer[length++] = '\n';
+  }
+
+  fd_set write_set;
+  FD_ZERO(&write_set);
+  FD_SET(fd, &write_set);
+  struct timeval no_wait = {0, 0};
+
+  ssize_t sent = -1;
+  if (select(fd + 1, NULL, &write_set, NULL, &no_wait) > 0) {
+    sent = send(fd, buffer, length, MSG_DONTWAIT);
+  }
+
+  if (sent == (ssize_t)length) {
+    wifi_tcp_write_failures = 0;
+    return;
+  }
+
+  if (++wifi_tcp_write_failures >= WIFI_TCP_MAX_WRITE_FAILURES) {
+    control_port->println(F("WiFi: TCP client not reading - disconnected"));
+    wifi_tcp_client.stop();
+    wifi_tcp_write_failures = 0;
+  }
+
+}
+
+// --------------------------------------------------------------
 void wifi_tcp_print(char * print_this){
 
-  if (wifi_tcp_client && wifi_tcp_client.connected()) {
-    wifi_tcp_client.print(print_this);
-  }
+  wifi_tcp_send(print_this, 0);
 
 }
 

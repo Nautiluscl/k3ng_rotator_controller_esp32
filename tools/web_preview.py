@@ -139,8 +139,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not axis:
                     return self.result(False, "Dirección no válida")
                 rs, rq = rotor.released[axis]
-                if sid == rs and seq <= rq:
+                if sid and sid == rs and seq <= rq:
                     print("keepalive atrasado descartado:", d, seq)
+                    return self.result(True)
+                first = (not sid) or args.get("first") == "1"
+                if not first and rotor.jog[axis] is None:
+                    print("keepalive sin movimiento en curso: no arranca", d)
                     return self.result(True)
                 rotor.track = None
                 rotor.jog[axis] = d

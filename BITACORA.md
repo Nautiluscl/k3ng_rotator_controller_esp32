@@ -169,8 +169,9 @@ Correcciones a partir de la revisión con un subagente Sonnet:
   comando siguiente. Ahora se descarta.
 - La negociación telnet se filtra con una pequeña máquina de estados: comandos de un byte,
   WILL/WONT/DO/DONT con opción y subnegociación SB…SE.
-- `println()` al cliente TCP podía bloquear el loop unos 3 s si el cliente dejaba de leer.
-  Se baja el tiempo de escritura a 50 ms por intento con `setConnectionTimeout()`.
+- `println()` al cliente TCP podía bloquear el loop si el cliente dejaba de leer. *Esta
+  primera corrección (`setConnectionTimeout()` a 50 ms) resultó ineficaz; ver la revisión
+  final.*
 - La reconexión forzada solo se hace en estados de fallo, para no cortar un intento de
   conexión en curso.
 - Sin NTP durante 24 h, `clock_status` vuelve a `FREE_RUNNING`.
@@ -258,3 +259,38 @@ Correcciones a partir de la revisión con un subagente Sonnet:
   un byte UTF-8 negativo es comportamiento indefinido.
 - `tools/web_preview.py` aplica la misma regla de `sid`/`seq` y se probó el descarte del
   keepalive atrasado.
+
+## 2026-10-07: revisión final (etapa 5, web y README)
+
+Correcciones a partir de la revisión con un subagente Sonnet:
+- **Escritura TCP bloqueante (riesgo de reinicio por watchdog):** `NetworkClient::write()`
+  del core espera hasta 1 s fijo por intento y reintenta hasta 10 veces. El tiempo que
+  configura `setConnectionTimeout()` no limita esa espera, así que la corrección de la
+  etapa 3 no servía. Con un cliente que deja de leer, una respuesta podía bloquear el loop
+  unos 10 s y el watchdog reiniciaba el ESP32. Ahora `wifi_tcp_send()` comprueba con
+  `select()` sin espera que el socket admite datos y envía con `send(..., MSG_DONTWAIT)`.
+  Si no cabe, la respuesta se descarta, y tras 3 fallos seguidos se desconecta al cliente.
+- **STOP desde otro móvil:** el siguiente keepalive del móvil que mantenía pulsado volvía a
+  arrancar el eje. Ahora la página marca con `first=1` la primera orden de cada pulsación,
+  y un keepalive (`first=0`) solo mantiene un movimiento web en curso: nunca arranca un eje
+  parado por STOP, por el hombre muerto o por un release.
+- **Clientes sin sesión** (curl, scripts): con `sid=0` el filtro descartaba todas las
+  órdenes. Ahora `sid=0` significa sin filtro, y cada orden cuenta como primera.
+- **STOP frente a la cola:** un seguimiento encolado justo antes de STOP se activaba
+  después. Ahora STOP vacía la cola (`xQueueReset`).
+- **Hombre muerto:** vuelve a parar siempre el eje al vencer. La versión anterior no lo
+  paraba si otro puerto parecía haber tomado el eje, pero con arranque suave un cambio de
+  sentido pasa por estados del sentido contrario más de 1 s y el eje podía quedar sin
+  control. Es preferible parar un movimiento ajeno a dejar uno propio sin control.
+- README: la tabla de la API documenta `axis` y explica que `sid`, `seq` y `first` son
+  opcionales para scripts.
+
+**Riesgo residual conocido:** `Adafruit_BNO055::begin()` espera el `CHIP_ID` sin límite de
+tiempo después de su reset por software. Antes de llamarlo se sondea el chip, así que solo se
+colgaría si el sensor desaparece en los pocos milisegundos entre el sondeo y `begin()`. En el
+loop terminaría en reinicio por watchdog; en `setup()`, que va antes de activar el watchdog,
+el ESP32 se quedaría colgado hasta reiniciarlo a mano.
+
+**Resultado:** compila sin avisos. RAM al 16,3 % y flash al 57,5 %. JS validado con Node.
+Probados con el simulador el STOP desde otro móvil, el keepalive posterior y el script sin
+`sid`.

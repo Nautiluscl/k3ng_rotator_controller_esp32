@@ -268,7 +268,7 @@ La usa la página, pero sirve también para scripts:
 | Método y ruta | Parámetros | Acción |
 |---|---|---|
 | `GET /api/status` | | Estado en JSON |
-| `POST /api/move` | `dir=cw\|ccw\|up\|down\|release`, `sid`, `seq` | Movimiento mantenido (requiere keepalive) |
+| `POST /api/move` | `dir=cw\|ccw\|up\|down\|release`; con `release`, `axis=az\|el` (opcional) | Movimiento mantenido: hay que repetir la orden antes de 1 s o el eje se para. `sid`, `seq` y `first` los usa la página; un script puede omitirlos |
 | `POST /api/stop` | | Parada de todo |
 | `POST /api/track` | `target=sun\|moon`, `on=1\|0` | Seguimiento |
 | `POST /api/locator` | `grid=FF46pn` | Ubicación de la estación |
