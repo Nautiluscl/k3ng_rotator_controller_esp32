@@ -157,3 +157,17 @@
 #if defined(FEATURE_MASTER_SEND_EL_ROTATION_COMMANDS_TO_REMOTE) && !defined(FEATURE_MASTER_WITH_SERIAL_SLAVE) && !defined(FEATURE_MASTER_WITH_ETHERNET_SLAVE)
   #error FEATURE_MASTER_SEND_EL_ROTATION_COMMANDS_TO_REMOTE can only be used with FEATURE_MASTER_WITH_SERIAL_SLAVE or FEATURE_MASTER_WITH_ETHERNET_SLAVE
 #endif
+
+#if defined(ARDUINO_ARCH_ESP32) && defined(FEATURE_SATELLITE_TRACKING)
+  #error "FEATURE_SATELLITE_TRACKING no está adaptado a ESP32 (los TLE se escriben en EEPROM sin commit())"
+#endif
+
+// Funciones que dependen de interrupciones o temporizadores AVR, o de pantallas LCD,
+// y que no se han adaptado al ESP32 (los manejadores tendrían que ir en IRAM_ATTR)
+#if defined(ARDUINO_ARCH_ESP32) && (defined(FEATURE_AZ_POSITION_INCREMENTAL_ENCODER) || defined(FEATURE_EL_POSITION_INCREMENTAL_ENCODER) || defined(FEATURE_AZ_POSITION_PULSE_INPUT) || defined(FEATURE_EL_POSITION_PULSE_INPUT) || defined(FEATURE_STEPPER_MOTOR))
+  #error "Encoders incrementales, entradas de pulsos y motores paso a paso no están adaptados a ESP32"
+#endif
+
+#if defined(HARDWARE_ESP32_WIFI) && defined(FEATURE_LCD_DISPLAY)
+  #error "El perfil HARDWARE_ESP32_WIFI no compila rotator_k3ngdisplay.cpp (ver build_src_filter en platformio.ini)"
+#endif

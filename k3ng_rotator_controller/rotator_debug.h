@@ -22,6 +22,9 @@
 #endif
 #ifdef HARDWARE_TEST
   #include "rotator_features_test.h"
+#endif
+#ifdef HARDWARE_ESP32_WIFI
+  #include "rotator_features_esp32.h"
 #endif    
 #if !defined(HARDWARE_CUSTOM)
   #include "rotator_features.h" 

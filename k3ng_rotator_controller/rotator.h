@@ -366,3 +366,16 @@
 #define MASTER_REMOTE_LINK_UP 1
 
 /* ------end of macros ------- */
+
+// Lectura cruda de magnetómetro. Se declara aquí y no en el .ino porque PlatformIO
+// genera los prototipos de las funciones del sketch al principio del archivo.
+#ifndef MAGNETOMETER_READING_DEFINED
+#define MAGNETOMETER_READING_DEFINED
+struct MagnetometerReading {
+  int16_t x;
+  int16_t y;
+  int16_t z;
+  byte valid;
+};
+
+#endif

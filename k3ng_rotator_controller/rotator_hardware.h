@@ -11,6 +11,8 @@
 // #define HARDWARE_WB6KCN         // customize rotator_features_wb6kcn.h, rotators_pins_wb6kcn.h, rotator_settings_wb6kcn.h
 // #define HARDWARE_WB6KCN_K3NG         // K3NG test jig - do not use
 // #define HARDWARE_TEST         // K3NG test jig - do not use
+// #define HARDWARE_ESP32_WIFI   // ESP32-WROOM-32 con WiFi, servidor web y BNO055: rotator_features_esp32.h, rotator_pins_esp32.h, rotator_settings_esp32.h
+                                 // (platformio.ini lo activa con -DHARDWARE_ESP32_WIFI)
 
 
 /* Serial port class definitions for various devices
@@ -33,6 +35,8 @@
   #define CONTROL_PORT_SERIAL_PORT_CLASS Serial_
 #elif defined(TEENSYDUINO)
   #define CONTROL_PORT_SERIAL_PORT_CLASS usb_serial_class
+#elif defined(ARDUINO_ARCH_ESP32)
+  #define CONTROL_PORT_SERIAL_PORT_CLASS HardwareSerial
 #else
   #define CONTROL_PORT_SERIAL_PORT_CLASS HardwareSerial
 #endif
@@ -41,7 +45,7 @@
 
 // do not modify anything below this line
 
-#if defined(HARDWARE_M0UPU) || defined(HARDWARE_EA4TX_ARS_USB) || defined(HARDWARE_WB6KCN) || defined(HARDWARE_TEST) || defined(HARDWARE_WB6KCN_K3NG)
+#if defined(HARDWARE_M0UPU) || defined(HARDWARE_EA4TX_ARS_USB) || defined(HARDWARE_WB6KCN) || defined(HARDWARE_TEST) || defined(HARDWARE_WB6KCN_K3NG) || defined(HARDWARE_ESP32_WIFI)
   #define HARDWARE_CUSTOM
 #endif
 

@@ -1114,7 +1114,11 @@
 #define CODE_VERSION "2023.10.06.2200"
 
 
-#include <avr/pgmspace.h>
+#if defined(__AVR__)
+  #include <avr/pgmspace.h>
+#else
+  #include <pgmspace.h>
+#endif
 #include <EEPROM.h>
 #include <math.h>
 //#include "rotator_settings.h"
@@ -1133,6 +1137,9 @@
 #endif
 #ifdef HARDWARE_TEST
   #include "rotator_features_test.h"
+#endif
+#ifdef HARDWARE_ESP32_WIFI
+  #include "rotator_features_esp32.h"
 #endif    
 #if !defined(HARDWARE_CUSTOM)
   #include "rotator_features.h" 
@@ -1264,6 +1271,9 @@
 #ifdef HARDWARE_TEST
   #include "rotator_pins_test.h"
 #endif
+#ifdef HARDWARE_ESP32_WIFI
+  #include "rotator_pins_esp32.h"
+#endif
 #if !defined(HARDWARE_CUSTOM)
   #include "rotator_pins.h"
 #endif
@@ -1284,6 +1294,9 @@
 #endif
 #ifdef HARDWARE_TEST
   #include "rotator_settings_test.h"
+#endif
+#ifdef HARDWARE_ESP32_WIFI
+  #include "rotator_settings_esp32.h"
 #endif      
 #if !defined(HARDWARE_CUSTOM)
   #include "rotator_settings.h"
@@ -7272,6 +7285,16 @@ void read_settings_from_eeprom(){
   unsigned int i;
   int ee = 0;
 
+  #if defined(ARDUINO_ARCH_ESP32)
+    // En ESP32 la EEPROM se emula en flash: hay que reservarla antes del primer acceso
+    static byte esp32_eeprom_started = 0;
+    if (!esp32_eeprom_started){
+      static_assert(sizeof(configuration) <= ESP32_EEPROM_SIZE, "ESP32_EEPROM_SIZE es menor que la estructura de configuracion");
+      EEPROM.begin(ESP32_EEPROM_SIZE);
+      esp32_eeprom_started = 1;
+    }
+  #endif
+
 
   #if defined(FEATURE_SATELLITE_TRACKING)
     #if (!defined(ARDUINO_SAM_DUE) || (defined(ARDUINO_SAM_DUE) && defined(FEATURE_EEPROM_E24C1024))) && !defined(HARDWARE_GENERIC_STM32F103C)
@@ -7800,6 +7823,10 @@ void write_settings_to_eeprom(){
   for (i = 0; i < sizeof(configuration); i++) {
     EEPROM.write(ee++, *p++);
   }
+
+  #if defined(ARDUINO_ARCH_ESP32)
+    EEPROM.commit();   // sin commit() los cambios no llegan a la flash
+  #endif
 
   configuration_dirty = 0;
 
@@ -8426,12 +8453,6 @@ void check_timed_interval(){
     defined(FEATURE_AZ_POSITION_DFROBOT_QMC5883) || defined(FEATURE_AZ_POSITION_MECHASOLUTION_QMC5883) || \
     defined(FEATURE_AZ_POSITION_POLOLU_LSM303) || defined(FEATURE_AZ_POSITION_ADAFRUIT_LSM303)
 
-struct MagnetometerReading {
-  int16_t x;
-  int16_t y;
-  int16_t z;
-  byte valid;
-};
 
 MagnetometerReading read_magnetometer_raw() {
   MagnetometerReading result = {0, 0, 0, 0};
@@ -9956,7 +9977,12 @@ void output_debug(){
         }
         debug.println(F("DIRTY"));
 
-        #if !defined(TEENSYDUINO)
+        #if defined(ARDUINO_ARCH_ESP32)
+          sprintf(tempstring,"%lu",(unsigned long)ESP.getFreeHeap());
+          debug.print(F("Free heap: "));
+          debug.print(tempstring);
+          debug.println(F("b"));
+        #elif !defined(TEENSYDUINO)
           void * HP = malloc(4);
           if (HP) {free(HP);}
           unsigned long free = (unsigned long)SP - (unsigned long)HP;
@@ -11840,7 +11866,11 @@ void initialize_peripherals(){
   #endif //FEATURE_ETHERNET
 
   #ifdef SET_I2C_BUS_SPEED
+    #if defined(ARDUINO_ARCH_ESP32)
+      Wire.setClock(SET_I2C_BUS_SPEED);   // TWBR es un registro AVR
+    #else
      TWBR = ((F_CPU / SET_I2C_BUS_SPEED) - 16) / 2;
+    #endif
   #endif
 
   #ifdef FEATURE_CLOCK
@@ -14275,8 +14305,10 @@ byte get_analog_pin(byte pin_number){
 
   switch (pin_number) {
     case 0: return_output = A0; break;
+    #if !defined(ARDUINO_ARCH_ESP32)   // el core ESP32 no define A1 ni A2
     case 1: return_output = A1; break;
     case 2: return_output = A2; break;
+    #endif
     case 3: return_output = A3; break;
     case 4: return_output = A4; break;
     case 5: return_output = A5; break;

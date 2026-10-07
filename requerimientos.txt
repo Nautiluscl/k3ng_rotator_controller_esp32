@@ -1,0 +1,13 @@
+- Utiliza el plan ya creado 
+- Crear platformio.ini necesario
+- Añade un servidor web liviano que tenga las siguientes funciones:
+*Monitoreo de coordenadas donde está apuntando, uptime, nivel de señal wifi, red conectada.
+*Movimiento rapido de los ejes del rotor con 4 botones
+*Debe estar optimizado para smartphones
+*Boton para seguir el Sol y la Luna.
+*Boton para parar todo movimiento.
+- Voy a usar una ESP32 WROOM standart, ese es el hardware, no consideres otras variantes.
+- No es necesario que corra en Arduino mega, no realices pruebas de compilacion para esta placa, solo ESP32
+- Usa subagentes sonnet para realizar las pruebas de codigo
+- Hay un repositorio de este proyecto en mi github, es un fork de otro usuario. Utiliza este repositorio. 
+- Realiza la implementacion por etapas. 
