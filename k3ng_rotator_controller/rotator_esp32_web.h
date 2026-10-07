@@ -62,7 +62,9 @@ button:disabled{opacity:.4}
 #msg.err{color:var(--st)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--st);margin-right:6px;vertical-align:1px}
 .dot.ok{background:var(--ok)}
+.sim{background:var(--wa);color:#111;font-weight:700;text-align:center;border-radius:10px;padding:8px;letter-spacing:.03em}
 </style></head><body><main>
+<div id="sim" class="sim" hidden>MODO SIMULACIÓN · los motores no se mueven</div>
 <section class="card pos">
  <div><div class="lb">Azimut</div><div class="v" id="az">---</div><div class="s" id="azs"></div></div>
  <div><div class="lb">Elevación</div><div class="v" id="el">---</div><div class="s" id="els"></div></div>
@@ -106,9 +108,9 @@ function dur(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.fl
 function bars(r){return r>=-55?'Excelente':r>=-67?'Buena':r>=-75?'Regular':'Débil'}
 function mvTxt(s){return{cw:'girando CW',ccw:'girando CCW',up:'subiendo',down:'bajando'}[s]||''}
 function render(j){S=j;
- $('az').textContent=f1(j.az);$('el').textContent=j.el_ok?f1(j.el):'---';
+ $('az').textContent=f1(j.az);$('el').textContent=f1(j.el);$('sim').hidden=!j.sim;
  $('azs').textContent=mvTxt(j.az_mv);$('azs').className='s'+(j.az_mv?' mv':'');
- $('els').textContent=j.el_ok?mvTxt(j.el_mv):'sensor no disponible';$('els').className='s'+(j.el_mv||!j.el_ok?' mv':'');
+ $('els').textContent=j.el_ok?mvTxt(j.el_mv):'sin sensor'+(j.el_mv?' · '+mvTxt(j.el_mv):'');$('els').className='s'+(j.el_mv||!j.el_ok?' mv':'');
  $('sun').classList.toggle('on',!!j.sun.trk);$('moon').classList.toggle('on',!!j.moon.trk);
  $('sunp').textContent=j.time_ok?'AZ '+f1(j.sun.az)+'  EL '+f1(j.sun.el):'sin hora';
  $('moonp').textContent=j.time_ok?'AZ '+f1(j.moon.az)+'  EL '+f1(j.moon.el):'sin hora';
@@ -183,7 +185,9 @@ struct web_command_t {
 struct web_snapshot_t {
   float az;
   float el;
-  byte el_ok;
+  byte el_ok;         // sensor de elevación operativo (o simulación)
+  byte el_blocked;    // elevación bloqueada por el sensor (OPTION_BNO055_FAULT_STOPS_ELEVATION)
+  byte sim;
   byte az_motion;
   byte el_motion;
   float sun_az, sun_el, moon_az, moon_el;
@@ -258,7 +262,8 @@ void web_update_snapshot(){
   #endif
 
   #if defined(FEATURE_EL_POSITION_BNO055)
-    s.el_ok = (bno055_state == BNO055_STATE_OK);
+    s.el_ok = (bno055_state == BNO055_STATE_OK) || SIMULATION_IS_ACTIVE();
+    s.el_blocked = BNO055_BLOCKS_ELEVATION();
     switch (bno055_state) {
       case BNO055_STATE_OK: s.bno_text = "BNO055 OK"; break;
       case BNO055_STATE_FAULT: s.bno_text = "BNO055 FALLO"; break;
@@ -306,6 +311,7 @@ void web_update_snapshot(){
 
   s.uptime = (unsigned long)(esp_timer_get_time() / 1000000ULL);
   s.reset_reason = esp32_reset_reason_text();
+  s.sim = SIMULATION_IS_ACTIVE();
 
   portENTER_CRITICAL(&web_snapshot_mux);
   web_snapshot = s;
@@ -381,9 +387,7 @@ void web_apply_command(web_command_t * cmd){
       }
       // se vuelve a comprobar aquí: entre la petición y este punto el sensor pudo fallar
       if (!web_rotation_allowed()) { break; }
-      #if defined(FEATURE_EL_POSITION_BNO055)
-        if ((cmd->axis == EL) && (bno055_state != BNO055_STATE_OK)) { break; }
-      #endif
+      if ((cmd->axis == EL) && BNO055_BLOCKS_ELEVATION()) { break; }
       if (cmd->axis == AZ) {
         web_jog_az_last_keepalive = millis();
         if (web_jog_az_request != cmd->request) {     // la orden se envía al cambiar; las repeticiones son keepalive
@@ -435,9 +439,7 @@ void web_apply_command(web_command_t * cmd){
         #if defined(FEATURE_CLOCK)
           if (!ntp_synced) { break; }
         #endif
-        #if defined(FEATURE_EL_POSITION_BNO055)
-          if (bno055_state != BNO055_STATE_OK) { break; }
-        #endif
+        if (BNO055_BLOCKS_ELEVATION()) { break; }
       }
       web_jog_az_request = REQUEST_STOP;
       web_jog_el_request = REQUEST_STOP;
@@ -632,11 +634,11 @@ void web_handle_status(){
   char json[720];
 
   snprintf(json, sizeof(json),
-    "{\"az\":%.2f,\"el\":%.2f,\"el_ok\":%d,\"az_mv\":\"%s\",\"el_mv\":\"%s\","
+    "{\"az\":%.2f,\"el\":%.2f,\"el_ok\":%d,\"sim\":%d,\"az_mv\":\"%s\",\"el_mv\":\"%s\","
     "\"sun\":{\"az\":%.2f,\"el\":%.2f,\"trk\":%d},\"moon\":{\"az\":%.2f,\"el\":%.2f,\"trk\":%d},"
     "\"wifi\":{\"ok\":%d,\"ssid\":\"%s\",\"rssi\":%d,\"ip\":\"%s\"},"
     "\"uptime\":%lu,\"rst\":\"%s\",\"time_ok\":%d,\"utc\":\"%s\",\"grid\":\"%s\",\"bno\":\"%s\"}",
-    (double)s.az, (double)s.el, s.el_ok, web_motion_text(s.az_motion), web_motion_text(s.el_motion),
+    (double)s.az, (double)s.el, s.el_ok, s.sim, web_motion_text(s.az_motion), web_motion_text(s.el_motion),
     (double)s.sun_az, (double)s.sun_el, s.sun_trk, (double)s.moon_az, (double)s.moon_el, s.moon_trk,
     s.wifi_ok, s.ssid, s.rssi, s.ip,
     s.uptime, s.reset_reason ? s.reset_reason : "-", s.time_ok, s.utc, s.grid, s.bno_text ? s.bno_text : "-");
@@ -689,7 +691,7 @@ void web_handle_move(){
     }
   #endif
 
-  if ((cmd.axis == EL) && !s.el_ok) {
+  if ((cmd.axis == EL) && s.el_blocked) {
     web_send_result(0, "Sensor de elevación no disponible");
     return;
   }
@@ -751,7 +753,7 @@ void web_handle_track(){
       web_send_result(0, "Sin hora NTP: no se puede calcular la posición");
       return;
     }
-    if (!s.el_ok) {
+    if (s.el_blocked) {
       web_send_result(0, "Sensor de elevación no disponible");
       return;
     }

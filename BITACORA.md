@@ -349,3 +349,34 @@ placa: **sin HH-12, sin BNO055 y sin relés conectados**.
 **Pendiente de probar con el hardware conectado:** HH-12 (lectura de azimut), BNO055
 (elevación, calibración, detección de fallo en caliente), salida real de los relés en
 GPIO 25/26/32/33 y el procedimiento completo de "Puesta en marcha" del README.
+
+## 2026-10-07: modo simulación y elevación sin bloqueo por sensor
+
+**Cambios pedidos**
+- **Sin bloqueo por falta de sensor:** la elevación ya no se impide ni se detiene cuando el
+  BNO055 no está o falla. El bloqueo pasa a ser opcional
+  (`OPTION_BNO055_FAULT_STOPS_ELEVATION`, desactivado por defecto) y se aplica en un solo
+  sitio, la macro `BNO055_BLOCKS_ELEVATION()`: en la lectura del sensor, en las órdenes web
+  y en la activación del seguimiento. Sin bloqueo, ante un fallo la lectura queda
+  congelada en el último valor válido y se avisa por el puerto de control. La web muestra
+  siempre la elevación, con la marca "sin sensor".
+- **Modo simulación** (`FEATURE_SIMULATION`, `rotator_esp32_sim.h`):
+  - `\XV1`/`\XV0`/`\XV`, con el estado guardado en `Preferences`.
+  - `digitalWriteEnhanced()` y `analogWriteEnhanced()` mantienen inactivas las salidas de
+    motor (y al entrar en simulación se ponen en reposo).
+  - `service_simulation()` integra la posición virtual según `current_az_state()` y
+    `current_el_state()`, a 6 °/s en azimut y 3 °/s en elevación, con topes en el rango
+    configurado.
+  - Al final de cada medición de `read_azimuth()` y `read_elevation()` la posición virtual
+    sustituye a la del sensor, sea cual sea el tipo de sensor.
+  - Al entrar o salir se paran ambos ejes, porque la posición salta entre la real y la
+    virtual.
+  - La web muestra la banda "MODO SIMULACIÓN" y la simulación ignora el bloqueo por sensor.
+
+**Pruebas en la placa real** (sin sensores ni relés)
+- `tools/test_simulacion.py` por TCP, 9 de 9 pruebas. `M090` y `M150` llegan; `W200 030`
+  llega en los dos ejes a la vez; `S` detiene a mitad de recorrido; `R`/`A` y `U`/`E` mueven
+  el eje correspondiente.
+- Con la simulación apagada y sin BNO055, la web ya permite subir la elevación y activar el
+  seguimiento del Sol.
+- La simulación se conserva tras un reinicio y se avisa al arrancar.

@@ -13,6 +13,8 @@ el PC:
 - **Azimut** con encoder absoluto **HH-12** (AS5045, SSI).
 - **Elevación (inclinación)** con un **Bosch BNO055** por I2C.
 - **Hora por NTP**, necesaria para seguir el Sol y la Luna, sin GPS ni RTC.
+- **Modo simulación:** un rotor virtual para probar PstRotator u otros programas sin motores
+  ni sensores.
 
 Este repositorio es un fork. La documentación original del fork, en inglés, con la herramienta
 de configuración en Python, está en [README.en.md](README.en.md). El registro de desarrollo del
@@ -35,9 +37,11 @@ port está en [BITACORA.md](BITACORA.md) y el plan técnico en
 5. [Interfaz web](#interfaz-web)
 6. [Puerto serie virtual (TCP)](#puerto-serie-virtual-tcp)
 7. [Comandos nuevos](#comandos-nuevos)
-8. [Seguridad y robustez](#seguridad-y-robustez)
-9. [Limitaciones](#limitaciones)
-10. [Estructura del código](#estructura-del-código)
+8. [Modo simulación](#modo-simulación)
+9. [Hora](#hora)
+10. [Seguridad y robustez](#seguridad-y-robustez)
+11. [Limitaciones](#limitaciones)
+12. [Estructura del código](#estructura-del-código)
 
 ---
 
@@ -344,15 +348,60 @@ Se suman a los del K3NG (`H` muestra la ayuda de los comandos Yaesu):
 | `\XBS` | Guardar la calibración del BNO055 |
 | `\XBC` | Borrar la calibración guardada |
 | `\Gxxxxxx` | Locator de la estación; ahora se guarda en flash |
+| `\XV1` / `\XV0` / `\XV` | Activar, desactivar o consultar el modo simulación |
+
+---
+
+## Modo simulación
+
+Sirve para probar la conectividad y el control desde PstRotator, Gpredict, hamlib o la web
+**sin motores ni sensores**. Se activa con `\XV1` (por USB o por TCP) y se desactiva con
+`\XV0`. El estado se guarda en flash y se conserva tras reiniciar; al arrancar en
+simulación, el puerto de control lo avisa y la web muestra una banda **MODO SIMULACIÓN**.
+
+Con la simulación activa:
+
+- **Los motores no se mueven:** las salidas de relé (GPIO 25, 26, 32 y 33, y las PWM si se
+  usan) se mantienen inactivas.
+- **La posición es virtual:** el firmware decide como siempre hacia dónde girar, y la
+  posición avanza en esa dirección a 6 °/s en azimut y 3 °/s en elevación, con topes en los
+  límites configurados. Las velocidades se ajustan en `SIMULATION_AZ_DEG_PER_SEC` y
+  `SIMULATION_EL_DEG_PER_SEC`.
+- **Todo lo demás funciona igual:** comandos GS-232 por USB y TCP, web, seguimiento de Sol y
+  Luna, STOP y hombre muerto.
+
+Ejemplo con PstRotator: configurar *Yaesu GS-232B* por TCP a `rotor.local:23`, activar la
+simulación con `\XV1` y mandar posiciones. `C2` devuelve la posición virtual y el rotor
+"llega" a destino como uno real.
+
+`tools/test_simulacion.py` hace esta prueba automáticamente: `M`, `W`, `S`, `R`/`A` y
+`U`/`E` por TCP.
+
+---
+
+## Hora
+
+La hora se obtiene por **NTP** a través de la WiFi: `pool.ntp.org`, con `time.google.com`
+como respaldo (`NTP_SERVER_1` y `NTP_SERVER_2`). Se sincroniza al conectar y luego cada hora.
+El firmware trabaja en UTC, que es lo que usan los cálculos del Sol y de la Luna. Si se pierde
+el NTP, el reloj interno sigue funcionando, y a las 24 h sin sincronizar el estado pasa a
+`FREE_RUNNING`. Sin una primera sincronización no se puede activar el seguimiento desde la
+web.
 
 ---
 
 ## Seguridad y robustez
 
 - **Sensor de elevación:**
-  - Si el BNO055 deja de responder (10 lecturas inválidas seguidas), la elevación se detiene,
-    se desactiva el seguimiento y no se acepta ninguna orden de elevación hasta que vuelva.
-  - Cada 10 s se reintenta la inicialización, solo con el rotor parado.
+  - Por defecto, **la falta del BNO055 no bloquea el movimiento**: la elevación se puede
+    mover a mano y el seguimiento se puede activar. Si el sensor falla, la lectura queda
+    congelada en el último valor válido y se avisa ("sin sensor" en la web).
+  - **Cuidado:** sin sensor, un movimiento a una posición (por ejemplo `W` o el seguimiento)
+    no tiene cómo saber que ha llegado, y el motor sigue hasta el final de carrera o hasta
+    STOP. Los finales de carrera mecánicos son imprescindibles.
+  - Para recuperar el bloqueo (sin sensor no se mueve la elevación ni se sigue nada) se
+    activa `OPTION_BNO055_FAULT_STOPS_ELEVATION` en `rotator_features_esp32.h`.
+  - Cada 10 s se reintenta la inicialización del sensor, solo con el rotor parado.
 - **Control de motores aislado de la web:** el servidor web corre en su propia tarea (núcleo
   0). Un cliente lento no puede frenar el `loop()` que controla los motores (núcleo 1).
 - **Watchdog:** si el `loop()` se cuelga más de 5 s, el ESP32 se reinicia y los relés se
@@ -391,11 +440,14 @@ k3ng_rotator_controller/
   rotator_settings_esp32_local.h.example  plantilla de ajustes privados (el .h real no se versiona)
   rotator_esp32_wifi.h              WiFi, puerto TCP, NTP, comandos \W, ubicación
   rotator_esp32_web.h               servidor web y página
+  rotator_esp32_sim.h               modo simulación
   rotator_prototypes_platformio.h   prototipos que PlatformIO no genera solo
 libraries/                          librerías del K3NG (hh12, moon2, sunpos, TimeLib…)
 tools/
   build_esp32.sh                    compilación con resumen
   web_preview.py                    vista previa de la web con rotor simulado
+  test_red.py, test_sol_y_tcp.py,   pruebas contra la placa real (red, web, Sol, TCP,
+  test_simulacion.py, test_serie.py simulación, puerto serie)
 BITACORA.md                         registro de desarrollo del port
 ```
 

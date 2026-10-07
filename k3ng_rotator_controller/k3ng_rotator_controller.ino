@@ -1973,6 +1973,10 @@ void setup() {
   digitalWrite(ELEVATION_STEPPER_ENABLE_PIN, LOW); // LOW = enabled
 #endif
 
+  #if defined(FEATURE_SIMULATION)
+    initialize_simulation();
+  #endif
+
   #if defined(ARDUINO_ARCH_ESP32)
     esp32_report_reset_reason();
     #if defined(OPTION_ESP32_LOOP_WATCHDOG)
@@ -2147,6 +2151,10 @@ void loop() {
   #ifdef FEATURE_WIFI
     service_wifi();
   #endif // FEATURE_WIFI
+
+  #ifdef FEATURE_SIMULATION
+    service_simulation();
+  #endif // FEATURE_SIMULATION
 
   #ifdef FEATURE_POWER_SWITCH
     service_power_switch();
@@ -9343,6 +9351,10 @@ void read_azimuth(byte force_read){
       }
     #endif // FEATURE_AZ_POSITION_INCREMENTAL_ENCODER      
 
+    #if defined(FEATURE_SIMULATION)
+      simulation_override_azimuth();
+    #endif
+
     last_measurement_time = millis();
   }
 
@@ -10591,6 +10603,10 @@ void read_elevation(byte force_read){
     elevation = correct_elevation(elevation);
     #endif //FEATURE_ELEVATION_CORRECTION
     #endif //FEATURE_EL_POSITION_MEMSIC_2125
+
+    #if defined(FEATURE_SIMULATION)
+      simulation_override_elevation();
+    #endif
 
     last_measurement_time = millis();
   }
@@ -14095,6 +14111,11 @@ void pinModeEnhanced(uint8_t pin, uint8_t mode){
 
 void digitalWriteEnhanced(uint8_t pin, uint8_t writevalue){
 
+  #if defined(FEATURE_SIMULATION)
+    if (simulation_active && simulation_is_motor_pin(pin)) {
+      writevalue = simulation_inactive_value(pin);     // en simulación los motores no se mueven
+    }
+  #endif
 
 
   #if !defined(FEATURE_MASTER_WITH_SERIAL_SLAVE) && !defined(FEATURE_MASTER_WITH_ETHERNET_SLAVE)
@@ -14138,6 +14159,11 @@ int analogReadEnhanced(uint8_t pin){
 
 void analogWriteEnhanced(uint8_t pin, int writevalue){
 
+  #if defined(FEATURE_SIMULATION)
+    if (simulation_active && simulation_is_motor_pin(pin)) {
+      writevalue = 0;
+    }
+  #endif
 
   #if !defined(FEATURE_MASTER_WITH_SERIAL_SLAVE) && !defined(FEATURE_MASTER_WITH_ETHERNET_SLAVE)
     analogWrite(pin, writevalue);
@@ -16470,6 +16496,11 @@ byte process_backslash_command(byte input_buffer[], int input_buffer_index, byte
   #if !defined(FEATURE_CALIBRATION)
     case 'X':
       switch (toupper(input_buffer[2])) {
+        #if defined(FEATURE_SIMULATION)
+        case 'V':  // \XV1 / \XV0 / \XV - modo simulación (rotator_esp32_sim.h)
+          simulation_backslash_command(input_buffer, input_buffer_index, return_string);
+          break;
+        #endif // FEATURE_SIMULATION
         #if defined(FEATURE_EL_POSITION_BNO055)
         case 'B':  // \XB - estado del BNO055, \XBS - guardar offsets de calibración, \XBC - borrar offsets
           if (input_buffer_index > 3) {
@@ -23635,8 +23666,8 @@ byte bno055_read_elevation(float * result){
       }
     }
     if (bno055_state != BNO055_STATE_OK) {
-      // sin sensor no se sabe dónde está la elevación: no se permite moverla
-      if (current_el_state() != NOT_DOING_ANYTHING) {
+      // con OPTION_BNO055_FAULT_STOPS_ELEVATION, sin sensor no se permite mover la elevación
+      if (BNO055_BLOCKS_ELEVATION() && (current_el_state() != NOT_DOING_ANYTHING)) {
         submit_request(EL, REQUEST_KILL, 0, DBG_BNO055_SENSOR_FAULT);
       }
       return 0;
@@ -23659,14 +23690,18 @@ byte bno055_read_elevation(float * result){
     if (bno055_consecutive_failures >= BNO055_FAIL_THRESHOLD) {
       bno055_state = BNO055_STATE_FAULT;
       bno055_smoothing_seeded = 0;
-      #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
-        change_tracking(DEACTIVATE_ALL);    // sin elevación fiable no se sigue nada
-      #endif
       bno055_last_reinit_attempt = millis();
-      if (current_el_state() != NOT_DOING_ANYTHING) {
-        submit_request(EL, REQUEST_KILL, 0, DBG_BNO055_SENSOR_FAULT);
+      if (BNO055_BLOCKS_ELEVATION()) {
+        #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
+          change_tracking(DEACTIVATE_ALL);    // sin elevación fiable no se sigue nada
+        #endif
+        if (current_el_state() != NOT_DOING_ANYTHING) {
+          submit_request(EL, REQUEST_KILL, 0, DBG_BNO055_SENSOR_FAULT);
+        }
+        control_port->println(F("BNO055: sensor fault - elevation stopped"));
+      } else {
+        control_port->println(F("BNO055: sensor fault - elevation reading frozen"));
       }
-      control_port->println(F("BNO055: sensor fault - elevation stopped"));
     }
     return 0;
   }
@@ -23788,6 +23823,9 @@ void bno055_status_string(char * return_string){
 #endif
 #if defined(FEATURE_WEB_SERVER)
   #include "rotator_esp32_web.h"
+#endif
+#if defined(FEATURE_SIMULATION)
+  #include "rotator_esp32_sim.h"
 #endif
 
 // --------------------------------------------------------------

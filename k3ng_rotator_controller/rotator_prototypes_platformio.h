@@ -51,4 +51,27 @@
   void esp32_report_reset_reason();
 #endif
 
+#if defined(FEATURE_SIMULATION)
+  extern byte simulation_active;
+  void initialize_simulation();
+  void service_simulation();
+  void simulation_override_azimuth();
+  void simulation_override_elevation();
+  byte simulation_is_motor_pin(uint8_t pin);
+  byte simulation_inactive_value(uint8_t pin);
+  void simulation_set(byte on, byte save);
+  void simulation_backslash_command(byte input_buffer[], int input_buffer_index, char * return_string);
+  #define SIMULATION_IS_ACTIVE() (simulation_active)
+#else
+  #define SIMULATION_IS_ACTIVE() (0)
+#endif
+
+// Elevación bloqueada por el BNO055: solo con OPTION_BNO055_FAULT_STOPS_ELEVATION y nunca en
+// simulación (allí no se usa el sensor)
+#if defined(FEATURE_EL_POSITION_BNO055) && defined(OPTION_BNO055_FAULT_STOPS_ELEVATION)
+  #define BNO055_BLOCKS_ELEVATION() ((bno055_state != BNO055_STATE_OK) && !SIMULATION_IS_ACTIVE())
+#else
+  #define BNO055_BLOCKS_ELEVATION() (0)
+#endif
+
 #endif // rotator_prototypes_platformio_h

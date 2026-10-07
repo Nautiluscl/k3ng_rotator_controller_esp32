@@ -487,3 +487,10 @@ You can tweak these, but read the online documentation!
 #define WEB_SNAPSHOT_INTERVAL_MS 200                // cada cuánto publica el loop el estado que lee /api/status
 #define WEB_COMMAND_QUEUE_LENGTH 16
 #define WEB_SERVER_TASK_STACK 8192                  // bytes de pila de la tarea del servidor web (núcleo 0)
+
+/* ---------------------- Modo simulación (FEATURE_SIMULATION) ---------------------- */
+#define SIMULATION_AZ_DEG_PER_SEC 6.0               // velocidad del rotor virtual (un Yaesu G-5500 gira ~6 °/s)
+#define SIMULATION_EL_DEG_PER_SEC 3.0
+#ifndef SIMULATION_ACTIVE_AT_BOOT
+  #define SIMULATION_ACTIVE_AT_BOOT 0               // estado inicial si nunca se usó \XV (luego manda lo guardado)
+#endif

@@ -195,3 +195,7 @@
 #if defined(FEATURE_WEB_SERVER) && !defined(FEATURE_WIFI)
   #error "FEATURE_WEB_SERVER requiere FEATURE_WIFI"
 #endif
+
+#if defined(FEATURE_SIMULATION) && !defined(ARDUINO_ARCH_ESP32)
+  #error "FEATURE_SIMULATION requiere un ESP32 (usa Preferences)"
+#endif

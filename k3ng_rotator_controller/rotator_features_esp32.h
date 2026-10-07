@@ -25,6 +25,8 @@
 // #define FEATURE_ETHERNET
 #define FEATURE_WIFI                      // WiFi en modo estación + puerto serie virtual por TCP + NTP (solo ESP32; ajustes WIFI_* en rotator_settings_esp32.h)
 #define FEATURE_WEB_SERVER                // servidor web para smartphone: http://rotor.local/ (requiere FEATURE_WIFI; ajustes WEB_* en rotator_settings_esp32.h)
+#define FEATURE_SIMULATION                // rotor virtual para probar el control remoto sin motores: \XV1 / \XV0 (ver rotator_esp32_sim.h)
+// #define OPTION_BNO055_FAULT_STOPS_ELEVATION  // sin BNO055 operativo no se mueve la elevación ni se activa el seguimiento
 #define OPTION_ESP32_LOOP_WATCHDOG        // reinicia el ESP32 si loop() se cuelga más de 5 s
 // #define FEATURE_STEPPER_MOTOR    // Requires TimerFive library to be copied to the Arduino libraries directory (If using OPTION_STEPPER_MOTOR_USE_TIMER_ONE_INSTEAD_OF_FIVE below, copy the TimeOne library)
 // #define FEATURE_AUTOCORRECT
