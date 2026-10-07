@@ -86,7 +86,7 @@ class Rotor:
                 "sun": {"az": round(t["sun"][0], 2), "el": round(t["sun"][1], 2), "trk": int(self.track == "sun")},
                 "moon": {"az": round(t["moon"][0], 2), "el": round(t["moon"][1], 2), "trk": int(self.track == "moon")},
                 "wifi": {"ok": 1, "ssid": "Casa_2.4G", "rssi": -61, "ip": "192.168.1.172"},
-                "uptime": int(time.time() - self.start) + 93784, "time_ok": 1,
+                "uptime": int(time.time() - self.start) + 93784, "rst": "POWER_ON", "time_ok": 1,
                 "utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "grid": self.grid, "bno": "BNO055 OK",
             }
 

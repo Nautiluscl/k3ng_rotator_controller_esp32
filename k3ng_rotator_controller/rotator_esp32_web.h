@@ -85,6 +85,7 @@ button:disabled{opacity:.4}
   <dt>Señal</dt><dd id="rssi">--</dd>
   <dt>IP</dt><dd id="ip">--</dd>
   <dt>Uptime</dt><dd id="up">--</dd>
+  <dt>Último reinicio</dt><dd id="rst">--</dd>
   <dt>Hora UTC</dt><dd id="utc">--</dd>
   <dt>Sensor EL</dt><dd id="bno">--</dd>
   <dt>Locator</dt><dd id="grid">--</dd>
@@ -110,7 +111,7 @@ function render(j){S=j;
  $('moonp').textContent=j.time_ok?'AZ '+f1(j.moon.az)+'  EL '+f1(j.moon.el):'sin hora';
  $('wd').className='dot'+(j.wifi.ok?' ok':'');$('ssid').textContent=j.wifi.ssid||'--';
  $('rssi').textContent=j.wifi.ok?j.wifi.rssi+' dBm ('+bars(j.wifi.rssi)+')':'--';$('ip').textContent=j.wifi.ip||'--';
- $('up').textContent=dur(j.uptime);$('utc').textContent=j.time_ok?j.utc:'sin sincronizar';
+ $('up').textContent=dur(j.uptime);$('rst').textContent=j.rst;$('utc').textContent=j.time_ok?j.utc:'sin sincronizar';
  $('bno').textContent=j.bno;$('grid').textContent=j.grid}
 async function poll(){try{const r=await fetch('/api/status',{cache:'no-store'});render(await r.json());
  if(fails){msg('')}fails=0}catch(e){if(++fails>1)msg('Sin conexión con el rotor',1)}
@@ -189,6 +190,7 @@ struct web_snapshot_t {
   char ip[16];
   char ssid[33];
   const char * bno_text;
+  const char * reset_reason;
 };
 
 WebServer web_server(WEB_SERVER_PORT);
@@ -284,6 +286,7 @@ void web_update_snapshot(){
   }
 
   s.uptime = (unsigned long)(esp_timer_get_time() / 1000000ULL);
+  s.reset_reason = esp32_reset_reason_text();
 
   portENTER_CRITICAL(&web_snapshot_mux);
   web_snapshot = s;
@@ -556,11 +559,11 @@ void web_handle_status(){
     "{\"az\":%.2f,\"el\":%.2f,\"el_ok\":%d,\"az_mv\":\"%s\",\"el_mv\":\"%s\","
     "\"sun\":{\"az\":%.2f,\"el\":%.2f,\"trk\":%d},\"moon\":{\"az\":%.2f,\"el\":%.2f,\"trk\":%d},"
     "\"wifi\":{\"ok\":%d,\"ssid\":\"%s\",\"rssi\":%d,\"ip\":\"%s\"},"
-    "\"uptime\":%lu,\"time_ok\":%d,\"utc\":\"%s\",\"grid\":\"%s\",\"bno\":\"%s\"}",
+    "\"uptime\":%lu,\"rst\":\"%s\",\"time_ok\":%d,\"utc\":\"%s\",\"grid\":\"%s\",\"bno\":\"%s\"}",
     (double)s.az, (double)s.el, s.el_ok, web_motion_text(s.az_motion), web_motion_text(s.el_motion),
     (double)s.sun_az, (double)s.sun_el, s.sun_trk, (double)s.moon_az, (double)s.moon_el, s.moon_trk,
     s.wifi_ok, s.ssid, s.rssi, s.ip,
-    s.uptime, s.time_ok, s.utc, s.grid, s.bno_text ? s.bno_text : "-");
+    s.uptime, s.reset_reason ? s.reset_reason : "-", s.time_ok, s.utc, s.grid, s.bno_text ? s.bno_text : "-");
 
   web_server.sendHeader("Cache-Control", "no-store");
   web_server.send(200, "application/json", json);

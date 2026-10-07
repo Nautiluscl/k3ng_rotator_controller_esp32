@@ -1973,6 +1973,16 @@ void setup() {
   digitalWrite(ELEVATION_STEPPER_ENABLE_PIN, LOW); // LOW = enabled
 #endif
 
+  #if defined(ARDUINO_ARCH_ESP32)
+    esp32_report_reset_reason();
+    #if defined(OPTION_ESP32_LOOP_WATCHDOG)
+      // Watchdog de tareas sobre loop(): si una iteración se cuelga más de
+      // CONFIG_ESP_TASK_WDT_TIMEOUT_S (5 s), el ESP32 se reinicia. Al reiniciar, los GPIO
+      // vuelven a ser entradas y los relés se sueltan (los drivers deben tener pull-down).
+      // Se activa al final de setup() porque la inicialización puede tardar más.
+      enableLoopWDT();
+    #endif
+  #endif
 
 }
 
@@ -2748,8 +2758,14 @@ void check_for_reset_flag(){
         asm volatile ("  jmp 0"); // reboot!     // doesn't work on Arduino Mega but works on SainSmart Mega.
         //wdt_enable(WDTO_30MS); while(1) {};  //doesn't work on Mega
         #else //OPTION_RESET_METHOD_JMP_ASM_0
+        #if defined(ARDUINO_ARCH_ESP32)
+          // volver a llamar a setup() crearía otra tarea web y otra cola sobre los mismos
+          // objetos: en ESP32 se hace un reinicio real del chip
+          ESP.restart();
+        #else
         setup();
         reset_the_unit = 0;
+        #endif
         #endif //OPTION_RESET_METHOD_JMP_ASM_0
         
         #endif //reset_pin
@@ -23770,3 +23786,32 @@ void bno055_status_string(char * return_string){
 #if defined(FEATURE_WEB_SERVER)
   #include "rotator_esp32_web.h"
 #endif
+
+// --------------------------------------------------------------
+#if defined(ARDUINO_ARCH_ESP32)
+const char * esp32_reset_reason_text(){
+
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "POWER_ON";
+    case ESP_RST_SW: return "SOFTWARE";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_INT_WDT: return "INT_WATCHDOG";
+    case ESP_RST_TASK_WDT: return "TASK_WATCHDOG";
+    case ESP_RST_WDT: return "WATCHDOG";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_DEEPSLEEP: return "DEEP_SLEEP";
+    case ESP_RST_EXT: return "EXTERNAL";
+    default: return "UNKNOWN";
+  }
+
+}
+
+// --------------------------------------------------------------
+void esp32_report_reset_reason(){
+
+  // Un BROWNOUT repetido suele indicar que los motores hunden la alimentación del ESP32
+  control_port->print(F("Reset reason: "));
+  control_port->println(esp32_reset_reason_text());
+
+}
+#endif // ARDUINO_ARCH_ESP32

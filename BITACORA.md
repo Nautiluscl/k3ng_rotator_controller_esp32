@@ -217,3 +217,21 @@ simulada se probaron la página, el estado, el movimiento, la parada por hombre 
 el seguimiento, la parada general y el locator válido e inválido.
 
 **Resultado:** RAM al 16,3 % y flash al 57,4 %.
+
+## 2026-10-07: etapa 5, robustez
+
+**Cambios**
+- **Watchdog del loop** (`OPTION_ESP32_LOOP_WATCHDOG`): se activa al final de `setup()` con
+  `enableLoopWDT()`. Si una iteración de `loop()` tarda más de 5 s
+  (`CONFIG_ESP_TASK_WDT_TIMEOUT_S` del core), el ESP32 se reinicia. Con el reinicio los GPIO
+  vuelven a ser entradas y los relés se sueltan, siempre que los drivers lleven pull-down.
+  Se revisaron los `delay()` largos del firmware: todos pertenecen a funciones desactivadas
+  en este perfil (encoder A2 y prueba de pantalla LCD).
+- **Motivo del último reinicio** (`esp_reset_reason()`): se muestra por el puerto de control
+  al arrancar y en la web. Un `BROWNOUT` repetido apunta a que los motores hunden la
+  alimentación del ESP32. El detector de brownout ya viene activado en el core.
+- **Reinicio por `\Q`:** el original vuelve a llamar a `setup()` desde el loop. En el ESP32
+  eso crearía una segunda tarea web y una segunda cola sobre los mismos objetos. Se
+  sustituye por `ESP.restart()`.
+
+**Resultado:** compila sin avisos. RAM al 16,3 % y flash al 57,4 %.

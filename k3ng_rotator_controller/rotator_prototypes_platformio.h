@@ -45,4 +45,9 @@
   void service_web_server();
 #endif
 
+#if defined(ARDUINO_ARCH_ESP32)
+  const char * esp32_reset_reason_text();
+  void esp32_report_reset_reason();
+#endif
+
 #endif // rotator_prototypes_platformio_h
