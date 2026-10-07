@@ -1,2 +1,5 @@
 .pio/
 .claude/worktrees/
+
+# Ajustes locales con datos privados (WiFi, contraseñas): no se suben al repositorio
+k3ng_rotator_controller/rotator_settings_esp32_local.h

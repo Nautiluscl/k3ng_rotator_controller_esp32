@@ -136,9 +136,25 @@ Todo el perfil ESP32 está en tres archivos de `k3ng_rotator_controller/`:
 El perfil se activa con `-DHARDWARE_ESP32_WIFI` en `platformio.ini`, de modo que los archivos
 genéricos (`rotator_features.h`, etc.) no se usan.
 
+### Ajustes privados (archivo local)
+
+La red WiFi, las contraseñas y la ubicación de cada estación van en
+`k3ng_rotator_controller/rotator_settings_esp32_local.h`. Ese archivo está en `.gitignore`
+y **no se sube al repositorio**. Sus `#define` tienen prioridad sobre los de
+`rotator_settings_esp32.h`.
+
+```bash
+cd k3ng_rotator_controller
+cp rotator_settings_esp32_local.h.example rotator_settings_esp32_local.h
+# editar WIFI_DEFAULT_SSID, WIFI_DEFAULT_PASSWORD y, si se quiere, DEFAULT_LATITUDE/LONGITUDE
+```
+
+Si el archivo no existe, se usan los valores de ejemplo del repositorio: red `mi_red` y
+ubicación en la Plaza de Armas de Santiago de Chile (FF46qn).
+
 ### Red WiFi
 
-Se pueden fijar valores por defecto antes de compilar:
+Los valores por defecto se fijan en el archivo local (ver arriba):
 
 ```c
 #define WIFI_DEFAULT_SSID "mi_red"
@@ -160,8 +176,9 @@ se rellenan `WIFI_STATIC_*`.
 
 ### Ubicación de la estación
 
-Hace falta para calcular la posición del Sol y de la Luna. Se fija con el locator Maidenhead
-de 6 caracteres, de dos maneras:
+Hace falta para calcular la posición del Sol y de la Luna. Por defecto es la Plaza de Armas
+de Santiago de Chile (`DEFAULT_LATITUDE` y `DEFAULT_LONGITUDE`, sobrescribibles en el archivo
+local). En funcionamiento se cambia con el locator Maidenhead de 6 caracteres, de dos maneras:
 
 - desde la web, en el apartado *Locator*
 - por el puerto de control: `\GFF46pn`
@@ -371,6 +388,7 @@ k3ng_rotator_controller/
   rotator_features_esp32.h          perfil ESP32: funciones
   rotator_pins_esp32.h              perfil ESP32: pines
   rotator_settings_esp32.h          perfil ESP32: ajustes
+  rotator_settings_esp32_local.h.example  plantilla de ajustes privados (el .h real no se versiona)
   rotator_esp32_wifi.h              WiFi, puerto TCP, NTP, comandos \W, ubicación
   rotator_esp32_web.h               servidor web y página
   rotator_prototypes_platformio.h   prototipos que PlatformIO no genera solo

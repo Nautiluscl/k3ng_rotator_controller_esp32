@@ -1,3 +1,11 @@
+/* Ajustes locales y privados (red WiFi, contraseñas, ubicación): si existe
+   rotator_settings_esp32_local.h, sus #define tienen prioridad sobre los de este archivo.
+   Ese archivo está en .gitignore y no se sube al repositorio; se crea copiando
+   rotator_settings_esp32_local.h.example. */
+#if __has_include("rotator_settings_esp32_local.h")
+  #include "rotator_settings_esp32_local.h"
+#endif
+
 
 /* -------------------------- rotation settings ---------------------------------------*/
 
@@ -197,8 +205,12 @@ You can tweak these, but read the online documentation!
 
 // Ubicación por defecto. Se cambia sin recompilar con \Gxxxxxx (locator) o desde la web;
 // en ESP32 el valor nuevo se guarda en flash y tiene prioridad sobre este.
-#define DEFAULT_LATITUDE 40.889958
-#define DEFAULT_LONGITUDE -75.585972
+#ifndef DEFAULT_LATITUDE
+  #define DEFAULT_LATITUDE -33.4378          // Plaza de Armas de Santiago de Chile (locator FF46qn)
+#endif
+#ifndef DEFAULT_LONGITUDE
+  #define DEFAULT_LONGITUDE -70.6505
+#endif
 
 #define MOON_TRACKING_CHECK_INTERVAL 5000 // This is only written to the configuration upon first boot of the code or when EEPROM_MAGIC_NUMBER is changed in rotator.h
 #define MOON_AOS_AZIMUTH_MIN 0
@@ -437,9 +449,15 @@ You can tweak these, but read the online documentation!
    Valores por defecto. Se pueden cambiar sin recompilar con \WS<ssid>, \WP<clave> y \WR
    (se guardan en Preferences y tienen prioridad sobre estos). \WD vuelve a estos valores.
 */
-#define WIFI_DEFAULT_SSID "mi_red"
-#define WIFI_DEFAULT_PASSWORD "mi_clave"
-#define WIFI_HOSTNAME "rotor"                       // nombre mDNS: rotor.local
+#ifndef WIFI_DEFAULT_SSID
+  #define WIFI_DEFAULT_SSID "mi_red"
+#endif
+#ifndef WIFI_DEFAULT_PASSWORD
+  #define WIFI_DEFAULT_PASSWORD "mi_clave"
+#endif
+#ifndef WIFI_HOSTNAME
+  #define WIFI_HOSTNAME "rotor"                     // nombre mDNS: rotor.local
+#endif
 #define WIFI_TCP_PORT 23                            // puerto serie virtual (GS-232 / Easycom / comandos \)
 #define WIFI_MESSAGE_TIMEOUT_MS 5000                // se descarta un comando TCP incompleto pasado este tiempo
 #define WIFI_RECONNECT_INTERVAL_MS 15000
@@ -458,8 +476,12 @@ You can tweak these, but read the online documentation!
 
 /* ---------------------- Servidor web (FEATURE_WEB_SERVER) ---------------------- */
 #define WEB_SERVER_PORT 80
-#define WEB_SERVER_USER "admin"
-#define WEB_SERVER_PASSWORD ""                      // vacío = sin contraseña (solo en una red local de confianza)
+#ifndef WEB_SERVER_USER
+  #define WEB_SERVER_USER "admin"
+#endif
+#ifndef WEB_SERVER_PASSWORD
+  #define WEB_SERVER_PASSWORD ""                    // vacío = sin contraseña (solo en una red local de confianza)
+#endif
 #define WEB_JOG_KEEPALIVE_MS 250                    // la página repite la orden de movimiento cada 250 ms mientras se pulsa
 #define WEB_JOG_TIMEOUT_MS 1000                     // sin repetición durante 1 s, el eje se detiene solo
 #define WEB_SNAPSHOT_INTERVAL_MS 200                // cada cuánto publica el loop el estado que lee /api/status

@@ -1,0 +1,26 @@
+/* rotator_settings_esp32_local.h  (plantilla)
+
+   Ajustes privados de cada estación. Se copia este archivo como
+   rotator_settings_esp32_local.h (sin .example) en la misma carpeta y se rellena.
+   Ese archivo está en .gitignore: la contraseña WiFi no llega nunca al repositorio.
+
+   Cualquier #define de aquí tiene prioridad sobre el valor por defecto de
+   rotator_settings_esp32.h. Lo que no se defina aquí conserva el valor por defecto.
+*/
+
+// Red WiFi por defecto (se puede cambiar después sin recompilar con \WS, \WP y \WR)
+#define WIFI_DEFAULT_SSID "nombre_de_la_red"
+#define WIFI_DEFAULT_PASSWORD "contraseña_de_la_red"
+
+// Nombre en la red: <nombre>.local
+// #define WIFI_HOSTNAME "rotor"
+
+// Contraseña de la interfaz web (vacía = sin contraseña)
+// #define WEB_SERVER_USER "admin"
+// #define WEB_SERVER_PASSWORD ""
+
+// Ubicación de la estación. Para un locator, las coordenadas se obtienen con \G<locator>
+// por el puerto de control (la respuesta muestra latitud y longitud) o con la misma
+// conversión que grid2deg() en libraries/moon2.
+// #define DEFAULT_LATITUDE -33.4378        // por defecto: Plaza de Armas de Santiago (FF46qn)
+// #define DEFAULT_LONGITUDE -70.6505

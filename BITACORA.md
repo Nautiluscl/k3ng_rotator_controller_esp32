@@ -294,3 +294,18 @@ el ESP32 se quedaría colgado hasta reiniciarlo a mano.
 **Resultado:** compila sin avisos. RAM al 16,3 % y flash al 57,5 %. JS validado con Node.
 Probados con el simulador el STOP desde otro móvil, el keepalive posterior y el script sin
 `sid`.
+
+## 2026-10-07: ajustes privados fuera del repositorio
+
+- `rotator_settings_esp32.h` incluye `rotator_settings_esp32_local.h` si existe
+  (`__has_include`). `WIFI_DEFAULT_SSID`, `WIFI_DEFAULT_PASSWORD`, `WIFI_HOSTNAME`,
+  `WEB_SERVER_USER`, `WEB_SERVER_PASSWORD` y `DEFAULT_LATITUDE`/`DEFAULT_LONGITUDE` pasan a
+  `#ifndef`, de modo que el archivo local tiene prioridad.
+- El archivo local está en `.gitignore`. El repositorio lleva la plantilla
+  `rotator_settings_esp32_local.h.example`, porque el repositorio va a ser público y no
+  debe contener credenciales.
+- La ubicación por defecto del repositorio pasa a ser la Plaza de Armas de Santiago de Chile
+  (−33,4378, −70,6505; FF46qn). Sustituye a la de Pensilvania del firmware original.
+- Se comprobó que sin archivo local el firmware lleva los valores de ejemplo, y que con él
+  lleva los locales. La contraseña no aparece en ningún archivo versionado ni en el
+  historial de git.
