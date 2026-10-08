@@ -474,7 +474,7 @@ GPIO 25/26/32/33 y el procedimiento completo de "Puesta en marcha" del README.
 
 **README**
 - Apartados *Sensores de posición* y *Potenciómetros*: esquema del divisor de tensión
-  (10 kΩ / 15 kΩ y 100 nF, factor 0,6), comprobación con multímetro antes de conectar,
+  (10 kΩ / 14,7 kΩ y 100 nF, factor 0,595; se cambió de 15 kΩ a 14,7 kΩ, más fácil de conseguir), comprobación con multímetro antes de conectar,
   límites del ADC del ESP32 y procedimiento de calibración.
 
 **Pruebas en la placa real**

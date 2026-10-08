@@ -118,16 +118,18 @@ consultarla en el manual del rotor.
 rotor puede dañar el pin o el ESP32 entero. Hace falta un **divisor de tensión** en cada eje:
 
 ```
-salida de posición del rotor ──[ R1 10 kΩ ]──┬──────────┬──── GPIO 34 (AZ) o 35 (EL)
-            (0 a 4,5 V)                      │          │
-                                       [ R2 15 kΩ ]  [ C 100 nF ]
-                                             │          │
-masa del rotor ──────────────────────────────┴──────────┴──── GND del ESP32
+salida de posición del rotor ──[ R1 10 kΩ ]──┬─────────────┬──── GPIO 34 (AZ) o 35 (EL)
+            (0 a 4,5 V)                      │             │
+                                      [ R2 14,7 kΩ ]  [ C 100 nF ]
+                                             │             │
+masa del rotor ──────────────────────────────┴─────────────┴──── GND del ESP32
 ```
 
-- **Tensión resultante:** `Vsalida = Ventrada × R2 / (R1 + R2) = Ventrada × 0,6`. Con 4,5 V
-  quedan 2,7 V, y aun con 5 V quedan 3,0 V. Así se aprovecha casi todo el rango del ADC con
+- **Tensión resultante:** `Vsalida = Ventrada × R2 / (R1 + R2) = Ventrada × 0,595`. Con 4,5 V
+  quedan 2,68 V, y aun con 5 V quedan 2,98 V. Así se aprovecha casi todo el rango del ADC con
   margen de seguridad.
+- **Resistencias:** 14,7 kΩ es un valor de la serie E96 (1 %), más fácil de conseguir que
+  15 kΩ. La tolerancia exacta importa poco, porque la calibración de los topes la compensa.
 - **Condensador de 100 nF:** filtra el ruido de los motores y ayuda al ADC del ESP32, que
   necesita una fuente de baja impedancia al muestrear.
 - **Masa común:** la masa del rotor y la del ESP32 tienen que estar unidas.
