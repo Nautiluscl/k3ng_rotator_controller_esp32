@@ -484,3 +484,17 @@ GPIO 25/26/32/33 y el procedimiento completo de "Puesta en marcha" del README.
 - La placa se dejó con el firmware por defecto (HH-12/BNO055). Regresión: `test_config.py`
   15 de 15, `test_red.py` 25 de 25 y `test_horizonte.py` 7 de 7.
 - Falta la prueba con potenciómetros reales.
+
+## 2026-10-08: plan del fork configurable por web
+
+- Se escribió `PLAN_FORK_CONFIG_WEB.md`: plan para un fork con un único firmware configurable
+  por completo desde la web (sensores, pantallas, pines, salidas, protocolos), con instalación
+  final mediante flasheador web (ESP Web Tools en GitHub Pages, Improv por serie).
+- Lo generó un workflow de 16 subagentes Opus 5.5 en esfuerzo bajo: 8 analistas, 3 arquitecturas
+  alternativas, 2 jueces (riesgo y usuario), redacción, crítico y corrección (11 de 14
+  observaciones aplicadas).
+- Arquitectura elegida: núcleo K3NG + capa de drivers (7/10 en riesgo, 8/10 en usuario), frente
+  a la conversión en el mismo código (5 / 6,5) y la reescritura (4 / 6,5).
+- Se comprobaron a mano las referencias al código del plan (baudios, contraseña web vacía,
+  `build_src_filter`, `rotator_k3ngdisplay.h`, `initialize_pins()`, `*WriteEnhanced()`).
+- Pendiente: que el usuario responda las preguntas abiertas de la sección 10 antes de empezar E0.
