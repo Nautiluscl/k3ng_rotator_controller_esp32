@@ -264,6 +264,7 @@ la IP que muestra `\WI`.
 | STOP | Parada inmediata de los dos ejes y fin de cualquier seguimiento |
 | ☀ Seguir Sol / ☾ Seguir Luna | Activan o desactivan el seguimiento; muestran la posición del astro. Si está bajo el horizonte, el rotor espera a que salga |
 | Información | Red y señal (RSSI), IP, uptime, último reinicio, hora UTC, estado del BNO055 y locator |
+| ⚙ Configuración | Abre la página de configuración (`/config`) |
 
 Mover un eje a mano desactiva el seguimiento activo.
 
@@ -272,6 +273,30 @@ Mover un eje a mano desactiva el seguimiento activo.
 Mientras se mantiene pulsado un botón, la página repite la orden cada 250 ms. Si el
 firmware pasa **1 s sin recibirla** (móvil bloqueado, WiFi caído, pestaña cerrada), detiene
 el eje. Un corte de red nunca deja el rotor girando.
+
+### Página de configuración (`/config`)
+
+Ajustes que se cambian **sin recompilar**. Se guardan en flash al pulsar *Guardar* y se
+conservan tras reiniciar.
+
+| Sección | Ajustes |
+|---|---|
+| Simulación | Interruptor del [modo simulación](#modo-simulación) |
+| Rotor | Punto de inicio de azimut (0-359°), rango de giro (90-720°), offset de elevación (±90°) |
+| Estación | Zona horaria (solo para la hora local del puerto de control) |
+| Seguimiento del Sol / de la Luna | Intervalo de cálculo, intervalo mínimo entre giros y umbral en grados |
+| Ubicación | Locator Maidenhead (calcula latitud y longitud) |
+| BNO055 | Estado, niveles de calibración (Sist, Giro, Acel), guardar o borrar la calibración |
+| Red WiFi | Red actual, señal e IP; cambiar a otra red (se reconecta sola) |
+| Sistema | Versión, uptime, último reinicio, memoria libre y botón de reinicio |
+
+Los valores se validan por rango antes de aplicarse, y la contraseña WiFi nunca se muestra.
+Si una red nueva no funciona, se vuelve a la de compilación por USB con `\WD`.
+
+Lo que se elige al compilar no se puede cambiar desde aquí: funciones activas
+(`FEATURE_*`), pines y la mayoría de `#define` de `rotator_settings_esp32.h`. Tampoco se
+expone el offset de azimut del K3NG, porque su comportamiento es confuso (solo actúa si es
+negativo); para alinear el azimut con el norte se usa el punto de inicio.
 
 ### Vista previa sin hardware
 
@@ -293,6 +318,12 @@ La usa la página, pero sirve también para scripts:
 | `POST /api/stop` | | Parada de todo |
 | `POST /api/track` | `target=sun\|moon`, `on=1\|0` | Seguimiento |
 | `POST /api/locator` | `grid=FF46pn` | Ubicación de la estación |
+| `GET /api/config` | | Ajustes, ubicación, BNO055, WiFi y sistema en JSON |
+| `POST /api/config` | `az_start`, `az_cap`, `el_offset`, `tz`, `sun_check`, `sun_min`, `sun_thr`, `moon_check`, `moon_min`, `moon_thr` | Guardar ajustes (todos a la vez) |
+| `POST /api/sim` | `on=1\|0` | Modo simulación |
+| `POST /api/bno055` | `action=save\|clear` | Calibración del BNO055 |
+| `POST /api/wifi` | `ssid`, `pass` | Cambiar de red y reconectar |
+| `POST /api/restart` | | Reiniciar el controlador |
 
 ---
 
@@ -447,7 +478,8 @@ tools/
   build_esp32.sh                    compilación con resumen
   web_preview.py                    vista previa de la web con rotor simulado
   test_red.py, test_sol_y_tcp.py,   pruebas contra la placa real (red, web, Sol, TCP,
-  test_simulacion.py, test_serie.py simulación, puerto serie)
+  test_simulacion.py, test_serie.py simulación, puerto serie, configuración)
+  test_config.py
 BITACORA.md                         registro de desarrollo del port
 ```
 

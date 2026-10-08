@@ -32,6 +32,8 @@
   void wifi_raw_line_feed(byte incoming_byte, byte source);
   void wifi_tcp_print(char * print_this);
   void wifi_tcp_send(const char * text, byte add_newline);
+  byte wifi_save_credentials();
+  void wifi_start_connection();
   void wifi_backslash_command(byte input_buffer[], int input_buffer_index, byte source_port, char * return_string);
 #endif
 
@@ -39,6 +41,11 @@
   void station_location_load();
   void station_location_save();
   byte station_location_set_from_grid(const char * grid_in, char * grid_out);
+#endif
+
+#if defined(FEATURE_EL_POSITION_BNO055)
+  byte bno055_save_offsets();
+  void bno055_clear_offsets();
 #endif
 
 #if defined(FEATURE_WEB_SERVER)

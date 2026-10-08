@@ -380,3 +380,40 @@ GPIO 25/26/32/33 y el procedimiento completo de "Puesta en marcha" del README.
 - Con la simulación apagada y sin BNO055, la web ya permite subir la elevación y activar el
   seguimiento del Sol.
 - La simulación se conserva tras un reinicio y se avisa al arrancar.
+
+## 2026-10-07: página de configuración web
+
+**Cambios**
+- Nueva página `/config` (10 KB, embebida), enlazada desde la principal. El formulario
+  del locator pasa de la página principal a esta.
+- Ajustes editables, todos de la estructura `configuration` que el firmware ya guardaba en
+  EEPROM:
+  - punto de inicio y rango de giro de azimut;
+  - offset de elevación;
+  - zona horaria;
+  - intervalos y umbrales del seguimiento del Sol y de la Luna.
+
+  Se validan por rango en la tarea web. El loop los aplica por la cola, los guarda en el
+  acto con `write_settings_to_eeprom()` y vuelve a leer la posición.
+- Además: interruptor de simulación, locator, estado y calibración del BNO055 (guardar o
+  borrar), cambio de red WiFi (la reconexión se difiere 1,5 s para que la respuesta HTTP
+  llegue antes de cortar) y reinicio (con parada de ejes y `ESP.restart()` diferido).
+- La contraseña WiFi nunca sale por la API.
+- Se deja fuera `azimuth_offset` del K3NG: `apply_azimuth_offset()` solo actúa con valores
+  negativos y los duplica, así que expuesto en un formulario confundiría. El ajuste
+  equivalente es el punto de inicio.
+- `tools/web_preview.py` sirve también `/config` con una API simulada.
+
+**Pruebas en la placa real**
+- `tools/test_config.py`, 15 de 15:
+  - Carga de la página y del JSON, y comprobación de que la contraseña no aparece.
+  - Aplicación de los ajustes.
+  - Rechazo de valores fuera de rango, de texto no numérico, de una red vacía y de una
+    contraseña WPA corta.
+  - Simulación desde la web.
+  - Reinicio desde la web: vuelve con `rst=SOFTWARE`, con los ajustes y la simulación
+    conservados.
+  - Restauración de los valores originales.
+- Regresión: `test_red.py` 25 de 25 y `test_simulacion.py` 9 de 9. En `test_red.py` se
+  actualizaron las dos pruebas que esperaban el bloqueo por falta de BNO055, que se quitó en
+  la entrega anterior a petición del usuario.

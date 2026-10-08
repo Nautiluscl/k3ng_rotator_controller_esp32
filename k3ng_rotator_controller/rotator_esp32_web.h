@@ -55,9 +55,7 @@ button:disabled{opacity:.4}
 .trk .t{font-weight:600}
 .info{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
 .info dt{color:var(--mu)}.info dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.loc{display:flex;gap:8px;margin-top:10px}
-.loc input{flex:1;min-width:0;font:inherit;color:var(--tx);background:#0f1720;border:1px solid #2f4155;border-radius:10px;padding:8px 10px;text-transform:uppercase}
-.loc button{min-height:40px;padding:0 14px;touch-action:auto}
+.cfg{display:block;margin-top:12px;padding:10px;text-align:center;color:var(--ac);text-decoration:none;border:1px solid #2f4155;border-radius:10px}
 #msg{min-height:1.3em;text-align:center;color:var(--mu);font-size:13px}
 #msg.err{color:var(--st)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--st);margin-right:6px;vertical-align:1px}
@@ -92,7 +90,7 @@ button:disabled{opacity:.4}
   <dt>Sensor EL</dt><dd id="bno">--</dd>
   <dt>Locator</dt><dd id="grid">--</dd>
  </dl>
- <form class="loc" id="locf"><input id="loci" maxlength="6" placeholder="Locator (FF46pn)" autocomplete="off" autocapitalize="characters"><button>Guardar</button></form>
+ <a class="cfg" href="/config">⚙ Configuración</a>
 </section>
 </main>
 <script>
@@ -139,9 +137,145 @@ $('stop').addEventListener('click',async()=>{release();if(navigator.vibrate)navi
  try{await post('/api/stop',{sid:sid,seq:seq});msg('Movimiento detenido')}catch(e){msg(e.message,1)}});
 ['sun','moon'].forEach(t=>$(t).addEventListener('click',async()=>{const on=S[t]&&S[t].trk?0:1;
  try{const j=await post('/api/track',{target:t,on:on});msg(j.msg)}catch(e){msg(e.message,1)}}));
-$('locf').addEventListener('submit',async e=>{e.preventDefault();const g=$('loci').value.trim();
- try{const j=await post('/api/locator',{grid:g});msg(j.msg);$('loci').value=''}catch(err){msg(err.message,1)}});
 poll();
+</script></body></html>)rawliteral";
+
+// --------------------------------------------------------------
+// Página de configuración (/config): ajustes que el firmware permite cambiar sin recompilar
+static const char web_config_html[] PROGMEM = R"rawliteral(<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1720">
+<title>Rotor · Configuración</title>
+<style>
+:root{--bg:#0f1720;--card:#18222e;--line:#263342;--tx:#e6edf3;--mu:#8b9bb0;--ac:#3fa7ff;--ok:#3fbf7f;--wa:#e5a83b;--st:#e5484d}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+padding:max(12px,env(safe-area-inset-top)) 14px max(24px,env(safe-area-inset-bottom))}
+main{max-width:460px;margin:0 auto;display:grid;gap:12px}
+header{display:flex;align-items:center;gap:10px}
+header a{color:var(--ac);text-decoration:none;font-size:15px;padding:6px 0}
+header h1{font-size:18px;margin:0;flex:1;text-align:right;font-weight:650}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:10px}
+h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);margin:0;font-weight:600}
+label{display:grid;grid-template-columns:1fr 7.5em;align-items:center;gap:10px;font-size:14px}
+label small{display:block;color:var(--mu);font-size:12px}
+input{font:inherit;color:var(--tx);background:var(--bg);border:1px solid #2f4155;border-radius:10px;padding:8px 10px;width:100%;min-width:0}
+input[type=number]{text-align:right;font-variant-numeric:tabular-nums}
+input.wide{grid-column:1/-1}
+button{font:inherit;color:var(--tx);background:#223041;border:1px solid #2f4155;border-radius:12px;min-height:44px;padding:0 14px;cursor:pointer}
+button.pri{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600}
+button.dan{background:transparent;border-color:var(--st);color:var(--st)}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sw input{display:none}
+.sw i{width:52px;height:30px;border-radius:15px;background:#2f4155;position:relative;flex:none;transition:.2s}
+.sw i:after{content:"";position:absolute;width:24px;height:24px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.2s}
+.sw input:checked+i{background:var(--wa)}.sw input:checked+i:after{left:25px}
+.note{color:var(--mu);font-size:12.5px;margin:0}
+.warn{color:var(--wa)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:14px}
+dt{color:var(--mu)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#msg{position:sticky;bottom:max(10px,env(safe-area-inset-bottom));min-height:0;text-align:center;font-size:14px;border-radius:10px;padding:0}
+#msg.show{padding:10px;background:#223041;border:1px solid #2f4155}
+#msg.err{border-color:var(--st);color:var(--st)}
+.lvl{display:inline-block;min-width:1.6em;padding:0 5px;border-radius:6px;background:#2f4155;text-align:center}
+.lvl.ok{background:var(--ok);color:#111}
+</style></head><body><main>
+<header><a href="/">‹ Control</a><h1>Configuración</h1></header>
+
+<section class="card">
+ <label class="sw"><span>Modo simulación<small>Rotor virtual: los motores no se mueven. Para probar PstRotator u otros programas.</small></span>
+  <input type="checkbox" id="sim"><i></i></label>
+</section>
+
+<form class="card" id="fcfg">
+ <h2>Rotor</h2>
+ <label>Punto de inicio de azimut (°)<input type="number" id="az_start" min="0" max="359" step="1" required></label>
+ <label>Rango de giro de azimut (°)<input type="number" id="az_cap" min="90" max="720" step="1" required></label>
+ <label>Offset de elevación (°)<small>Se suma a la lectura del BNO055</small><input type="number" id="el_offset" min="-90" max="90" step="0.1" required></label>
+ <h2>Estación</h2>
+ <label>Zona horaria (h)<small>Solo para la hora local del puerto de control</small><input type="number" id="tz" min="-12" max="14" step="0.5" required></label>
+ <h2>Seguimiento del Sol</h2>
+ <label>Intervalo de cálculo (ms)<input type="number" id="sun_check" min="100" max="60000" step="100" required></label>
+ <label>Intervalo mínimo entre giros (ms)<input type="number" id="sun_min" min="0" max="600000" step="100" required></label>
+ <label>Umbral para girar (°)<input type="number" id="sun_thr" min="0.1" max="20" step="0.1" required></label>
+ <h2>Seguimiento de la Luna</h2>
+ <label>Intervalo de cálculo (ms)<input type="number" id="moon_check" min="100" max="60000" step="100" required></label>
+ <label>Intervalo mínimo entre giros (ms)<input type="number" id="moon_min" min="0" max="600000" step="100" required></label>
+ <label>Umbral para girar (°)<input type="number" id="moon_thr" min="0.1" max="20" step="0.1" required></label>
+ <button class="pri">Guardar ajustes</button>
+</form>
+
+<form class="card" id="floc">
+ <h2>Ubicación</h2>
+ <dl><dt>Locator</dt><dd id="grid">--</dd><dt>Latitud / longitud</dt><dd id="latlon">--</dd></dl>
+ <div class="row"><input id="loci" maxlength="6" placeholder="Nuevo locator (FF46pn)" autocomplete="off" autocapitalize="characters"><button>Guardar</button></div>
+</form>
+
+<section class="card" id="cbno">
+ <h2>Sensor de elevación (BNO055)</h2>
+ <dl><dt>Estado</dt><dd id="bno">--</dd>
+  <dt>Calibración</dt><dd>Sist <span class="lvl" id="cs">-</span> Giro <span class="lvl" id="cg">-</span> Acel <span class="lvl" id="ca">-</span></dd>
+  <dt>Calibración guardada</dt><dd id="cofs">--</dd>
+  <dt>Elevación sin offset</dt><dd id="craw">--</dd></dl>
+ <p class="note">Quieto unos segundos calibra el giroscopio; seis posiciones distintas, quieto en cada una, calibran el acelerómetro. Con Giro y Acel en 3 se puede guardar.</p>
+ <div class="row"><button id="bsave">Guardar calibración</button><button id="bclear" class="dan">Borrar</button></div>
+</section>
+
+<form class="card" id="fwifi">
+ <h2>Red WiFi</h2>
+ <dl><dt>Red actual</dt><dd id="ssid">--</dd><dt>Señal</dt><dd id="rssi">--</dd><dt>IP</dt><dd id="ip">--</dd></dl>
+ <input class="wide" id="nssid" maxlength="32" placeholder="Nueva red (SSID)" autocomplete="off" autocapitalize="none">
+ <input class="wide" id="npass" type="password" maxlength="63" placeholder="Contraseña" autocomplete="new-password">
+ <p class="note warn">Al cambiar de red el rotor se desconecta de esta. Si la red nueva no funciona, se recupera por USB con \WD (vuelve a la red de compilación).</p>
+ <button class="pri">Guardar y reconectar</button>
+</form>
+
+<section class="card">
+ <h2>Sistema</h2>
+ <dl><dt>Firmware</dt><dd id="ver">--</dd><dt>Uptime</dt><dd id="up">--</dd><dt>Último reinicio</dt><dd id="rst">--</dd><dt>Memoria libre</dt><dd id="heap">--</dd></dl>
+ <button id="brst" class="dan">Reiniciar el controlador</button>
+</section>
+<div id="msg"></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let C={},mt=null;
+const F=['az_start','az_cap','el_offset','tz','sun_check','sun_min','sun_thr','moon_check','moon_min','moon_thr'];
+function msg(t,e){const m=$('msg');m.textContent=t||'';m.className=t?('show'+(e?' err':'')):'';clearTimeout(mt);if(t)mt=setTimeout(()=>msg(''),5000)}
+async function req(u,o){const c=new AbortController(),t=setTimeout(()=>c.abort(),4000);
+ try{return await fetch(u,Object.assign({signal:c.signal,cache:'no-store'},o||{}))}finally{clearTimeout(t)}}
+async function post(u,b){const r=await req(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(b||{})});
+ const j=await r.json().catch(()=>({ok:false,msg:'Respuesta inválida'}));if(!j.ok)throw new Error(j.msg||'Error');return j}
+function dur(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return(d?d+'d ':'')+h+'h '+m+'m'}
+function lvl(id,v){$(id).textContent=v;$(id).className='lvl'+(v==3?' ok':'')}
+function render(j,first){C=j;
+ $('sim').checked=!!j.sim;
+ if(first)F.forEach(k=>{$(k).value=j.cfg[k]});
+ $('grid').textContent=j.grid;$('latlon').textContent=j.lat.toFixed(4)+', '+j.lon.toFixed(4);
+ $('cbno').hidden=!j.bno.present;
+ $('bno').textContent=j.bno.text;lvl('cs',j.bno.sys);lvl('cg',j.bno.gyro);lvl('ca',j.bno.accel);
+ $('cofs').textContent=j.bno.saved?'sí':'no';$('craw').textContent=j.bno.raw.toFixed(2)+'°';
+ $('ssid').textContent=j.wifi.ssid;$('rssi').textContent=j.wifi.ok?j.wifi.rssi+' dBm':'--';$('ip').textContent=j.wifi.ip||'--';
+ $('ver').textContent=j.ver;$('up').textContent=dur(j.uptime);$('rst').textContent=j.rst;$('heap').textContent=Math.round(j.heap/1024)+' KB'}
+async function load(first){try{const r=await req('/api/config');render(await r.json(),first)}catch(e){msg('Sin conexión con el rotor',1)}}
+$('sim').addEventListener('change',async e=>{const on=e.target.checked?1:0;
+ try{const j=await post('/api/sim',{on:on});msg(j.msg)}catch(err){msg(err.message,1);e.target.checked=!on}});
+$('fcfg').addEventListener('submit',async e=>{e.preventDefault();const b={};F.forEach(k=>b[k]=$(k).value);
+ try{const j=await post('/api/config',b);msg(j.msg);setTimeout(()=>load(true),600)}catch(err){msg(err.message,1)}});
+$('floc').addEventListener('submit',async e=>{e.preventDefault();
+ try{const j=await post('/api/locator',{grid:$('loci').value.trim()});msg(j.msg);$('loci').value='';setTimeout(load,600)}catch(err){msg(err.message,1)}});
+$('bsave').addEventListener('click',async()=>{try{const j=await post('/api/bno055',{action:'save'});msg(j.msg)}catch(e){msg(e.message,1)}});
+$('bclear').addEventListener('click',async()=>{if(!window.confirm('¿Borrar la calibración guardada del BNO055?'))return;
+ try{const j=await post('/api/bno055',{action:'clear'});msg(j.msg)}catch(e){msg(e.message,1)}});
+$('fwifi').addEventListener('submit',async e=>{e.preventDefault();const s=$('nssid').value;
+ if(!s){msg('Falta el nombre de la red',1);return}
+ if(!window.confirm('El rotor se conectará a "'+s+'" y dejará esta red. ¿Continuar?'))return;
+ try{const j=await post('/api/wifi',{ssid:s,pass:$('npass').value});msg(j.msg);$('npass').value=''}catch(err){msg(err.message,1)}});
+$('brst').addEventListener('click',async()=>{if(!window.confirm('¿Reiniciar el controlador? Se detiene cualquier movimiento.'))return;
+ try{const j=await post('/api/restart');msg(j.msg);setTimeout(()=>location.reload(),12000)}catch(e){msg(e.message,1)}});
+load(true);setInterval(()=>load(false),2000);
 </script></body></html>)rawliteral";
 
 /*
@@ -166,6 +300,13 @@ poll();
 #define WEB_CMD_RELEASE 2
 #define WEB_CMD_TRACK 4
 #define WEB_CMD_LOCATOR 5
+#define WEB_CMD_CONFIG 6
+#define WEB_CMD_SIM 7
+#define WEB_CMD_BNO055 8
+#define WEB_CMD_WIFI 9
+#define WEB_CMD_RESTART 10
+
+#define WEB_CONFIG_FIELDS 10      // mismo orden que web_config_names[]
 
 #define WEB_TARGET_SUN 1
 #define WEB_TARGET_MOON 2
@@ -180,6 +321,28 @@ struct web_command_t {
   uint32_t sid;       // sesión de la página (aleatoria por carga); 0 = cliente sin sesión (curl, scripts)
   uint32_t seq;       // número de pulsación dentro de la sesión
   byte first;         // 1 = primera orden de la pulsación; 0 = keepalive
+  float values[WEB_CONFIG_FIELDS];   // WEB_CMD_CONFIG
+  char text1[33];     // WEB_CMD_WIFI: SSID; WEB_CMD_BNO055: acción
+  char text2[65];     // WEB_CMD_WIFI: contraseña
+};
+
+// Ajustes de /api/config: nombre, mínimo y máximo (se validan en la tarea web)
+struct web_config_field_t {
+  const char * name;
+  float min_value;
+  float max_value;
+};
+const web_config_field_t web_config_fields[WEB_CONFIG_FIELDS] = {
+  {"az_start", 0, 359},           // configuration.azimuth_starting_point
+  {"az_cap", 90, 720},            // configuration.azimuth_rotation_capability
+  {"el_offset", -90, 90},         // configuration.elevation_offset
+  {"tz", -12, 14},                // configuration.clock_timezone_offset
+  {"sun_check", 100, 60000},      // configuration.tracking_sun_check_frequency_ms
+  {"sun_min", 0, 600000},         // configuration.tracking_sun_minimum_rotation_interval_ms
+  {"sun_thr", 0.1, 20},           // configuration.tracking_sun_degrees_difference_threshold
+  {"moon_check", 100, 60000},     // configuration.tracking_moon_check_frequency_ms
+  {"moon_min", 0, 600000},        // configuration.tracking_moon_minimum_rotation_interval_ms
+  {"moon_thr", 0.1, 20},          // configuration.tracking_moon_degrees_difference_threshold
 };
 
 struct web_snapshot_t {
@@ -203,7 +366,17 @@ struct web_snapshot_t {
   char ssid[33];
   const char * bno_text;
   const char * reset_reason;
+  // datos de /api/config
+  float cfg[WEB_CONFIG_FIELDS];
+  double lat, lon;
+  byte bno_present, bno_sys, bno_gyro, bno_accel, bno_saved;
+  float bno_raw;
+  uint32_t heap;
 };
+
+// acciones diferidas: la respuesta HTTP tiene que salir antes de reconectar o reiniciar
+unsigned long web_pending_wifi_reconnect_at = 0;
+unsigned long web_pending_restart_at = 0;
 
 WebServer web_server(WEB_SERVER_PORT);
 QueueHandle_t web_command_queue = NULL;
@@ -311,6 +484,41 @@ void web_update_snapshot(){
 
   s.uptime = (unsigned long)(esp_timer_get_time() / 1000000ULL);
   s.reset_reason = esp32_reset_reason_text();
+  s.heap = ESP.getFreeHeap();
+  s.lat = latitude;
+  s.lon = longitude;
+
+  s.cfg[0] = configuration.azimuth_starting_point;
+  s.cfg[1] = configuration.azimuth_rotation_capability;
+  s.cfg[2] = configuration.elevation_offset;
+  s.cfg[3] = configuration.clock_timezone_offset;
+  #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
+    s.cfg[4] = configuration.tracking_sun_check_frequency_ms;
+    s.cfg[5] = configuration.tracking_sun_minimum_rotation_interval_ms;
+    s.cfg[6] = configuration.tracking_sun_degrees_difference_threshold;
+    s.cfg[7] = configuration.tracking_moon_check_frequency_ms;
+    s.cfg[8] = configuration.tracking_moon_minimum_rotation_interval_ms;
+    s.cfg[9] = configuration.tracking_moon_degrees_difference_threshold;
+  #endif
+
+  #if defined(FEATURE_EL_POSITION_BNO055)
+    // getCalibration() es una lectura I2C: como mucho cada 2 s
+    static uint8_t cal_sys = 0, cal_gyro = 0, cal_accel = 0;
+    static unsigned long last_cal_read = 0;
+    if (bno055_state != BNO055_STATE_OK) {
+      cal_sys = cal_gyro = cal_accel = 0;
+    } else if ((millis() - last_cal_read) > 2000) {
+      uint8_t cal_mag = 0;
+      bno.getCalibration(&cal_sys, &cal_gyro, &cal_accel, &cal_mag);
+      last_cal_read = millis();
+    }
+    s.bno_present = 1;
+    s.bno_sys = cal_sys;
+    s.bno_gyro = cal_gyro;
+    s.bno_accel = cal_accel;
+    s.bno_saved = bno055_offsets_restored;
+    s.bno_raw = bno055_raw_elevation;
+  #endif
   s.sim = SIMULATION_IS_ACTIVE();
 
   portENTER_CRITICAL(&web_snapshot_mux);
@@ -465,6 +673,66 @@ void web_apply_command(web_command_t * cmd){
       #endif
       break;
 
+    case WEB_CMD_CONFIG:
+      configuration.azimuth_starting_point = (int)cmd->values[0];
+      configuration.azimuth_rotation_capability = (long)cmd->values[1];
+      configuration.elevation_offset = cmd->values[2];
+      configuration.clock_timezone_offset = cmd->values[3];
+      #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
+        configuration.tracking_sun_check_frequency_ms = (unsigned int)cmd->values[4];
+        configuration.tracking_sun_minimum_rotation_interval_ms = (unsigned int)cmd->values[5];
+        configuration.tracking_sun_degrees_difference_threshold = cmd->values[6];
+        configuration.tracking_moon_check_frequency_ms = (unsigned int)cmd->values[7];
+        configuration.tracking_moon_minimum_rotation_interval_ms = (unsigned int)cmd->values[8];
+        configuration.tracking_moon_degrees_difference_threshold = cmd->values[9];
+      #endif
+      write_settings_to_eeprom();     // se guarda ya, sin esperar a EEPROM_WRITE_DIRTY_CONFIG_TIME
+      // la posición se recalcula con el punto de inicio y el offset nuevos
+      read_azimuth(1);
+      #if defined(FEATURE_ELEVATION_CONTROL)
+        read_elevation(1);
+      #endif
+      break;
+
+    case WEB_CMD_SIM:
+      #if defined(FEATURE_SIMULATION)
+        simulation_set(cmd->on, 1);
+      #endif
+      web_jog_az_request = REQUEST_STOP;
+      web_jog_el_request = REQUEST_STOP;
+      break;
+
+    case WEB_CMD_BNO055:
+      #if defined(FEATURE_EL_POSITION_BNO055)
+        if (cmd->text1[0] == 's') {
+          bno055_save_offsets();
+        } else if (cmd->text1[0] == 'c') {
+          bno055_clear_offsets();
+        }
+      #endif
+      break;
+
+    case WEB_CMD_WIFI:
+      strncpy(wifi_ssid, cmd->text1, sizeof(wifi_ssid) - 1);
+      wifi_ssid[sizeof(wifi_ssid) - 1] = 0;
+      strncpy(wifi_password, cmd->text2, sizeof(wifi_password) - 1);
+      wifi_password[sizeof(wifi_password) - 1] = 0;
+      wifi_save_credentials();
+      web_pending_wifi_reconnect_at = millis() + 1500;
+      if (web_pending_wifi_reconnect_at == 0) { web_pending_wifi_reconnect_at = 1; }
+      control_port->print(F("WiFi: new network from web, reconnecting to "));
+      control_port->println(wifi_ssid);
+      break;
+
+    case WEB_CMD_RESTART:
+      submit_request(AZ, REQUEST_KILL, 0, DBG_WEB_STOP);
+      #if defined(FEATURE_ELEVATION_CONTROL)
+        submit_request(EL, REQUEST_KILL, 0, DBG_WEB_STOP);
+      #endif
+      web_pending_restart_at = millis() + 1500;
+      if (web_pending_restart_at == 0) { web_pending_restart_at = 1; }
+      break;
+
     case WEB_CMD_LOCATOR:
       #if defined(FEATURE_MOON_TRACKING) || defined(FEATURE_SUN_TRACKING)
         {
@@ -516,6 +784,17 @@ void service_web_server(){
     #ifdef DEBUG_ETHERNET
       debug.println(F("service_web_server: el jog keepalive timeout"));
     #endif
+  }
+
+  if (web_pending_wifi_reconnect_at && ((long)(millis() - web_pending_wifi_reconnect_at) >= 0)) {
+    web_pending_wifi_reconnect_at = 0;
+    wifi_connected = 0;
+    wifi_start_connection();
+  }
+  if (web_pending_restart_at && ((long)(millis() - web_pending_restart_at) >= 0)) {
+    control_port->println(F("Restart requested from web"));
+    control_port->flush();
+    ESP.restart();
   }
 
   if ((web_snapshot_last_update == 0) || ((millis() - web_snapshot_last_update) > WEB_SNAPSHOT_INTERVAL_MS)) {
@@ -828,6 +1107,189 @@ void web_handle_locator(){
 }
 
 // --------------------------------------------------------------
+void web_handle_config_page(){
+
+  if (!web_check_auth()) {
+    return;
+  }
+  web_server.sendHeader("Cache-Control", "no-cache");
+  web_server.send_P(200, "text/html; charset=utf-8", web_config_html);
+
+}
+
+// --------------------------------------------------------------
+void web_handle_config_get(){
+
+  if (!web_check_auth()) {
+    return;
+  }
+
+  web_snapshot_t s;
+  web_get_snapshot(&s);
+
+  // la contraseña WiFi no se devuelve nunca
+  String json;
+  json.reserve(900);
+  json = "{\"cfg\":{";
+  for (byte i = 0; i < WEB_CONFIG_FIELDS; i++) {
+    if (i) { json += ","; }
+    json += "\"";
+    json += web_config_fields[i].name;
+    json += "\":";
+    json += String(s.cfg[i], 2);
+  }
+  char buffer[420];
+  snprintf(buffer, sizeof(buffer),
+    "},\"sim\":%d,\"grid\":\"%s\",\"lat\":%.6f,\"lon\":%.6f,"
+    "\"bno\":{\"present\":%d,\"text\":\"%s\",\"sys\":%d,\"gyro\":%d,\"accel\":%d,\"saved\":%d,\"raw\":%.2f},"
+    "\"wifi\":{\"ok\":%d,\"ssid\":\"%s\",\"rssi\":%d,\"ip\":\"%s\"},"
+    "\"ver\":\"%s\",\"uptime\":%lu,\"rst\":\"%s\",\"heap\":%lu}",
+    s.sim, s.grid, s.lat, s.lon,
+    s.bno_present, s.bno_text ? s.bno_text : "-", s.bno_sys, s.bno_gyro, s.bno_accel, s.bno_saved, (double)s.bno_raw,
+    s.wifi_ok, s.ssid, s.rssi, s.ip,
+    CODE_VERSION " ESP32 " __DATE__, s.uptime, s.reset_reason ? s.reset_reason : "-", (unsigned long)s.heap);
+  json += buffer;
+
+  web_server.sendHeader("Cache-Control", "no-store");
+  web_server.send(200, "application/json", json);
+
+}
+
+// --------------------------------------------------------------
+void web_handle_config_post(){
+
+  if (!web_check_auth()) {
+    return;
+  }
+
+  web_command_t cmd;
+  memset(&cmd, 0, sizeof(cmd));
+  cmd.type = WEB_CMD_CONFIG;
+  char message[96];
+
+  for (byte i = 0; i < WEB_CONFIG_FIELDS; i++) {
+    String text = web_server.arg(web_config_fields[i].name);
+    text.trim();
+    char * end = NULL;
+    float value = strtof(text.c_str(), &end);
+    if ((text.length() == 0) || (end == NULL) || (*end != 0) || isnan(value) ||
+        (value < web_config_fields[i].min_value) || (value > web_config_fields[i].max_value)) {
+      snprintf(message, sizeof(message), "Valor no válido en %s (%g a %g)",
+        web_config_fields[i].name, (double)web_config_fields[i].min_value, (double)web_config_fields[i].max_value);
+      web_send_result(0, message);
+      return;
+    }
+    cmd.values[i] = value;
+  }
+
+  if (web_queue_command(&cmd)) {
+    web_send_result(1, "Ajustes guardados");
+  }
+
+}
+
+// --------------------------------------------------------------
+void web_handle_sim(){
+
+  if (!web_check_auth()) {
+    return;
+  }
+
+  #if defined(FEATURE_SIMULATION)
+    web_command_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.type = WEB_CMD_SIM;
+    cmd.on = (web_server.arg("on") == "1");
+    if (web_queue_command(&cmd)) {
+      web_send_result(1, cmd.on ? "Simulación activada: los motores no se moverán" : "Simulación desactivada");
+    }
+  #else
+    web_send_result(0, "Firmware compilado sin FEATURE_SIMULATION");
+  #endif
+
+}
+
+// --------------------------------------------------------------
+void web_handle_bno055(){
+
+  if (!web_check_auth()) {
+    return;
+  }
+
+  #if defined(FEATURE_EL_POSITION_BNO055)
+    web_snapshot_t s;
+    web_get_snapshot(&s);
+    web_command_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.type = WEB_CMD_BNO055;
+    String action = web_server.arg("action");
+    if (action == "save") {
+      if ((s.bno_gyro < 3) || (s.bno_accel < 3)) {
+        web_send_result(0, "Falta calibrar: Giro y Acel tienen que estar en 3");
+        return;
+      }
+      strcpy(cmd.text1, "save");
+    } else if (action == "clear") {
+      strcpy(cmd.text1, "clear");
+    } else {
+      web_send_result(0, "Acción no válida");
+      return;
+    }
+    if (web_queue_command(&cmd)) {
+      web_send_result(1, (cmd.text1[0] == 's') ? "Calibración guardada" : "Calibración borrada");
+    }
+  #else
+    web_send_result(0, "Firmware compilado sin BNO055");
+  #endif
+
+}
+
+// --------------------------------------------------------------
+void web_handle_wifi(){
+
+  if (!web_check_auth()) {
+    return;
+  }
+
+  String ssid = web_server.arg("ssid");
+  String pass = web_server.arg("pass");
+  if ((ssid.length() == 0) || (ssid.length() > 32)) {
+    web_send_result(0, "El nombre de la red debe tener de 1 a 32 caracteres");
+    return;
+  }
+  if ((pass.length() > 63) || ((pass.length() > 0) && (pass.length() < 8))) {
+    web_send_result(0, "La contraseña WPA debe tener de 8 a 63 caracteres (o vacía si la red es abierta)");
+    return;
+  }
+
+  web_command_t cmd;
+  memset(&cmd, 0, sizeof(cmd));
+  cmd.type = WEB_CMD_WIFI;
+  strncpy(cmd.text1, ssid.c_str(), sizeof(cmd.text1) - 1);
+  strncpy(cmd.text2, pass.c_str(), sizeof(cmd.text2) - 1);
+  if (web_queue_command(&cmd)) {
+    web_send_result(1, "Red guardada. El rotor se reconecta en unos segundos: búscalo en la red nueva");
+  }
+
+}
+
+// --------------------------------------------------------------
+void web_handle_restart(){
+
+  if (!web_check_auth()) {
+    return;
+  }
+
+  web_command_t cmd;
+  memset(&cmd, 0, sizeof(cmd));
+  cmd.type = WEB_CMD_RESTART;
+  if (web_queue_command(&cmd)) {
+    web_send_result(1, "Reiniciando… la página se recarga sola");
+  }
+
+}
+
+// --------------------------------------------------------------
 void web_handle_not_found(){
 
   web_server.send(404, "text/plain", "404");
@@ -856,6 +1318,13 @@ void initialize_web_server(){
   web_server.on("/api/stop", HTTP_POST, web_handle_stop);
   web_server.on("/api/track", HTTP_POST, web_handle_track);
   web_server.on("/api/locator", HTTP_POST, web_handle_locator);
+  web_server.on("/config", HTTP_GET, web_handle_config_page);
+  web_server.on("/api/config", HTTP_GET, web_handle_config_get);
+  web_server.on("/api/config", HTTP_POST, web_handle_config_post);
+  web_server.on("/api/sim", HTTP_POST, web_handle_sim);
+  web_server.on("/api/bno055", HTTP_POST, web_handle_bno055);
+  web_server.on("/api/wifi", HTTP_POST, web_handle_wifi);
+  web_server.on("/api/restart", HTTP_POST, web_handle_restart);
   web_server.onNotFound(web_handle_not_found);
   web_server.begin();
 

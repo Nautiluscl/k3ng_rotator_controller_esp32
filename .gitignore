@@ -6,3 +6,7 @@ k3ng_rotator_controller/rotator_settings_esp32_local.h
 
 # PstRotator (software de terceros, con licencia propia) y su prefijo de Wine: solo local
 pstrotator/
+
+# Generados localmente (PlatformIO/VS Code, Python)
+.vscode/
+__pycache__/

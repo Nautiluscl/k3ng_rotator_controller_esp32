@@ -145,10 +145,13 @@ time.sleep(0.4)
 mv6 = status()["az_mv"]
 check("STOP de otro cliente gana al keepalive", code == 200 and mv6 == "", "az_mv=%r" % mv6)
 
+# sin OPTION_BNO055_FAULT_STOPS_ELEVATION (por defecto) la falta del sensor no bloquea nada
 code, j = post("/api/move", {"dir": "up", "sid": sid, "seq": 3, "first": 1})
-check("Elevación bloqueada sin BNO055", code == 400, j.get("msg", ""))
+check("Elevación permitida sin BNO055", code == 200, j.get("msg", ""))
+post("/api/move", {"dir": "release", "axis": "el", "sid": sid, "seq": 3})
 code, j = post("/api/track", {"target": "sun", "on": 1})
-check("Seguimiento bloqueado sin BNO055", code == 400, j.get("msg", ""))
+check("Seguimiento permitido sin BNO055", code == 200, j.get("msg", ""))
+post("/api/stop", {"sid": sid, "seq": 3})
 code, j = post("/api/move", {"dir": "xx"})
 check("Dirección inválida rechazada", code == 400, j.get("msg", ""))
 code, j = post("/api/locator", {"grid": "ZZ99zz"})

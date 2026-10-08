@@ -33,11 +33,11 @@ KEEPALIVE_MS = setting("WEB_JOG_KEEPALIVE_MS", 250)
 JOG_TIMEOUT_MS = setting("WEB_JOG_TIMEOUT_MS", 1000)
 
 
-def extract_page():
+def extract_page(name="web_page_html"):
     src = WEB_H.read_text(encoding="utf-8")
-    m = re.search(r'R"rawliteral\((.*?)\)rawliteral"', src, re.S)
+    m = re.search(name + r'\[\] PROGMEM = R"rawliteral\((.*?)\)rawliteral"', src, re.S)
     if not m:
-        sys.exit("No se encontró la página en " + str(WEB_H))
+        sys.exit("No se encontró %s en %s" % (name, WEB_H))
     return m.group(1).replace("%KEEPALIVE%", str(KEEPALIVE_MS))
 
 
@@ -52,6 +52,10 @@ class Rotor:
         self.released = {"az": (0, 0), "el": (0, 0)}   # (sid, seq) de la última pulsación soltada
         self.track = None
         self.grid = "FF46pn"
+        self.sim = 0
+        self.cfg = {"az_start": 0, "az_cap": 360, "el_offset": 0, "tz": -3, "sun_check": 5000, "sun_min": 5000,
+                    "sun_thr": 0.5, "moon_check": 5000, "moon_min": 5000, "moon_thr": 0.5}
+        self.ssid = "Casa_2.4G"
         self.start = time.time()
         self.t = time.time()
 
@@ -84,7 +88,7 @@ class Rotor:
             return {
                 "az": round(self.az, 2), "el": round(self.el, 2), "el_ok": 1,
                 "az_mv": self.jog["az"] or ("cw" if tracking_az else ""), "el_mv": self.jog["el"] or "",
-                "sun": {"az": round(t["sun"][0], 2), "el": round(t["sun"][1], 2), "trk": int(self.track == "sun")},
+                "sim": self.sim, "sun": {"az": round(t["sun"][0], 2), "el": round(t["sun"][1], 2), "trk": int(self.track == "sun")},
                 "moon": {"az": round(t["moon"][0], 2), "el": round(t["moon"][1], 2), "trk": int(self.track == "moon")},
                 "wifi": {"ok": 1, "ssid": "Casa_2.4G", "rssi": -61, "ip": "192.168.1.172"},
                 "uptime": int(time.time() - self.start) + 93784, "rst": "POWER_ON", "time_ok": 1,
@@ -94,6 +98,9 @@ class Rotor:
 
 rotor = Rotor()
 PAGE = None
+CONFIG_PAGE = None
+LIMITS = {"az_start": (0, 359), "az_cap": (90, 720), "el_offset": (-90, 90), "tz": (-12, 14), "sun_check": (100, 60000),
+          "sun_min": (0, 600000), "sun_thr": (0.1, 20), "moon_check": (100, 60000), "moon_min": (0, 600000), "moon_thr": (0.1, 20)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -116,6 +123,14 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/":
             self.reply(200, PAGE, "text/html; charset=utf-8")
+        elif path == "/config":
+            self.reply(200, CONFIG_PAGE, "text/html; charset=utf-8")
+        elif path == "/api/config":
+            st = rotor.status()
+            self.reply(200, json.dumps({"cfg": rotor.cfg, "sim": rotor.sim, "grid": rotor.grid, "lat": -33.4378, "lon": -70.6505,
+                "bno": {"present": 1, "text": "BNO055 OK", "sys": 3, "gyro": 3, "accel": 2, "saved": 0, "raw": st["el"]},
+                "wifi": {"ok": 1, "ssid": rotor.ssid, "rssi": -61, "ip": "192.168.1.172"},
+                "ver": "2023.10.06.2200 ESP32 (simulado)", "uptime": st["uptime"], "rst": "POWER_ON", "heap": 214000}))
         elif path == "/api/status":
             self.reply(200, json.dumps(rotor.status()))
         else:
@@ -168,6 +183,30 @@ class Handler(BaseHTTPRequestHandler):
                                        "Seguimiento de %s activo (bajo el horizonte: espera a que salga)" % name)
                 rotor.track = None
                 return self.result(True, "Seguimiento de %s desactivado" % name)
+            if path == "/api/config":
+                for k, (lo, hi) in LIMITS.items():
+                    try:
+                        v = float(args.get(k, ""))
+                    except ValueError:
+                        return self.result(False, "Valor no válido en %s (%g a %g)" % (k, lo, hi))
+                    if not lo <= v <= hi:
+                        return self.result(False, "Valor no válido en %s (%g a %g)" % (k, lo, hi))
+                    rotor.cfg[k] = v
+                return self.result(True, "Ajustes guardados")
+            if path == "/api/sim":
+                rotor.sim = int(args.get("on") == "1")
+                return self.result(True, "Simulación activada: los motores no se moverán" if rotor.sim else "Simulación desactivada")
+            if path == "/api/bno055":
+                return self.result(args.get("action") in ("save", "clear"),
+                                   "Falta calibrar: Giro y Acel tienen que estar en 3" if args.get("action") == "save" else "Calibración borrada")
+            if path == "/api/wifi":
+                s = args.get("ssid", "")
+                if not 1 <= len(s) <= 32:
+                    return self.result(False, "El nombre de la red debe tener de 1 a 32 caracteres")
+                rotor.ssid = s
+                return self.result(True, "Red guardada. El rotor se reconecta en unos segundos: búscalo en la red nueva")
+            if path == "/api/restart":
+                return self.result(True, "Reiniciando… la página se recarga sola")
             if path == "/api/locator":
                 g = args.get("grid", "")
                 if not re.fullmatch(r"[A-Ra-r]{2}\d\d[A-Xa-x]{2}", g):
@@ -178,8 +217,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global PAGE
+    global PAGE, CONFIG_PAGE
     PAGE = extract_page()
+    CONFIG_PAGE = extract_page("web_config_html")
     if len(sys.argv) > 2 and sys.argv[1] == "--extract":
         Path(sys.argv[2]).write_text(PAGE, encoding="utf-8")
         print("Página extraída en", sys.argv[2])
