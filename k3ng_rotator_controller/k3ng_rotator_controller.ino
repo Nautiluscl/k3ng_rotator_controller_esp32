@@ -20747,11 +20747,22 @@ void service_moon_tracking(){
 
 
 
-    if ((moon_visible) && ((millis() - last_tracking_submit_request) >= configuration.tracking_moon_minimum_rotation_interval_ms)
-      && ((abs(azimuth-moon_azimuth)>configuration.tracking_moon_degrees_difference_threshold) || 
-      (abs(elevation-moon_elevation)>configuration.tracking_moon_degrees_difference_threshold))) {
+    byte moon_follow = moon_visible;
+    float moon_target_elevation = moon_elevation;
+    #if defined(OPTION_TRACKING_WAIT_AT_HORIZON)
+      // bajo el horizonte se apunta al azimut de la Luna a 0° de elevación, para tenerla ya
+      // enfocada cuando salga
+      if (!moon_visible) {
+        moon_follow = 1;
+        moon_target_elevation = 0;
+      }
+    #endif
+
+    if ((moon_follow) && ((millis() - last_tracking_submit_request) >= configuration.tracking_moon_minimum_rotation_interval_ms)
+      && ((abs(azimuth-moon_azimuth)>configuration.tracking_moon_degrees_difference_threshold) ||
+      (abs(elevation-moon_target_elevation)>configuration.tracking_moon_degrees_difference_threshold))) {
       submit_request(AZ, REQUEST_AZIMUTH, moon_azimuth, DBG_SERVICE_MOON_TRACKING);
-      submit_request(EL, REQUEST_ELEVATION, moon_elevation, DBG_SERVICE_MOON_TRACKING);
+      submit_request(EL, REQUEST_ELEVATION, moon_target_elevation, DBG_SERVICE_MOON_TRACKING);
       last_tracking_submit_request = millis();
     }
 
@@ -20836,11 +20847,22 @@ void service_sun_tracking(){
       debug.println(longitude);
     #endif // DEBUG_SUN_TRACKING
 
-    if ((sun_visible) && ((millis() - last_tracking_submit_request) >= configuration.tracking_sun_minimum_rotation_interval_ms)
-      && ((abs(azimuth-sun_azimuth)>configuration.tracking_sun_degrees_difference_threshold) || 
-      (abs(elevation-sun_elevation)>configuration.tracking_sun_degrees_difference_threshold))) {
+    byte sun_follow = sun_visible;
+    float sun_target_elevation = sun_elevation;
+    #if defined(OPTION_TRACKING_WAIT_AT_HORIZON)
+      // bajo el horizonte se apunta al azimut del Sol a 0° de elevación, para tenerlo ya
+      // enfocado cuando salga
+      if (!sun_visible) {
+        sun_follow = 1;
+        sun_target_elevation = 0;
+      }
+    #endif
+
+    if ((sun_follow) && ((millis() - last_tracking_submit_request) >= configuration.tracking_sun_minimum_rotation_interval_ms)
+      && ((abs(azimuth-sun_azimuth)>configuration.tracking_sun_degrees_difference_threshold) ||
+      (abs(elevation-sun_target_elevation)>configuration.tracking_sun_degrees_difference_threshold))) {
       submit_request(AZ, REQUEST_AZIMUTH, sun_azimuth, DBG_SERVICE_SUN_TRACKING);
-      submit_request(EL, REQUEST_ELEVATION, sun_elevation, DBG_SERVICE_SUN_TRACKING);
+      submit_request(EL, REQUEST_ELEVATION, sun_target_elevation, DBG_SERVICE_SUN_TRACKING);
       last_tracking_submit_request = millis();
     }
 

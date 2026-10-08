@@ -61,6 +61,7 @@ button:disabled{opacity:.4}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--st);margin-right:6px;vertical-align:1px}
 .dot.ok{background:var(--ok)}
 .sim{background:var(--wa);color:#111;font-weight:700;text-align:center;border-radius:10px;padding:8px;letter-spacing:.03em}
+.cred{color:var(--mu);font-size:12px;text-align:center;line-height:1.5;margin:4px 0 0}.cred a{color:var(--mu)}
 </style></head><body><main>
 <div id="sim" class="sim" hidden>MODO SIMULACIÓN · los motores no se mueven</div>
 <section class="card pos">
@@ -92,6 +93,7 @@ button:disabled{opacity:.4}
  </dl>
  <a class="cfg" href="/config">⚙ Configuración</a>
 </section>
+<footer class="cred">Basado en el <a href="https://github.com/k3ng/k3ng_rotator_controller">K3NG Rotator Controller</a> de Anthony Good, K3NG,<br>a través del fork de <a href="https://github.com/X9X0/k3ng_rotator_controller">X9X0</a>. Licencia GPL v3.</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);let S={},held=null,heldBtn=null,hbT=null,fails=0,seq=0;
@@ -182,6 +184,7 @@ dt{color:var(--mu)}dd{margin:0;text-align:right;font-variant-numeric:tabular-num
 #msg.err{border-color:var(--st);color:var(--st)}
 .lvl{display:inline-block;min-width:1.6em;padding:0 5px;border-radius:6px;background:#2f4155;text-align:center}
 .lvl.ok{background:var(--ok);color:#111}
+.cred{color:var(--mu);font-size:12px;text-align:center;line-height:1.5;margin:4px 0 0}.cred a{color:var(--mu)}
 </style></head><body><main>
 <header><a href="/">‹ Control</a><h1>Configuración</h1></header>
 
@@ -239,6 +242,7 @@ dt{color:var(--mu)}dd{margin:0;text-align:right;font-variant-numeric:tabular-num
  <button id="brst" class="dan">Reiniciar el controlador</button>
 </section>
 <div id="msg"></div>
+<footer class="cred">Basado en el <a href="https://github.com/k3ng/k3ng_rotator_controller">K3NG Rotator Controller</a> de Anthony Good, K3NG,<br>a través del fork de <a href="https://github.com/X9X0/k3ng_rotator_controller">X9X0</a>. Licencia GPL v3.</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);let C={},mt=null;
@@ -1048,10 +1052,10 @@ void web_handle_track(){
 
   if (cmd.target == WEB_TARGET_SUN) {
     if (!cmd.on) { web_send_result(1, "Seguimiento del Sol desactivado"); }
-    else { web_send_result(1, s.sun_visible ? "Siguiendo el Sol" : "Seguimiento del Sol activo (bajo el horizonte: espera a que salga)"); }
+    else { web_send_result(1, s.sun_visible ? "Siguiendo el Sol" : "Seguimiento del Sol activo (bajo el horizonte: el rotor espera en su azimut, a 0° de elevación)"); }
   } else {
     if (!cmd.on) { web_send_result(1, "Seguimiento de la Luna desactivado"); }
-    else { web_send_result(1, s.moon_visible ? "Siguiendo la Luna" : "Seguimiento de la Luna activo (bajo el horizonte: espera a que salga)"); }
+    else { web_send_result(1, s.moon_visible ? "Siguiendo la Luna" : "Seguimiento de la Luna activo (bajo el horizonte: el rotor espera en su azimut, a 0° de elevación)"); }
   }
 
 }

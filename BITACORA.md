@@ -417,3 +417,28 @@ GPIO 25/26/32/33 y el procedimiento completo de "Puesta en marcha" del README.
 - Regresión: `test_red.py` 25 de 25 y `test_simulacion.py` 9 de 9. En `test_red.py` se
   actualizaron las dos pruebas que esperaban el bloqueo por falta de BNO055, que se quitó en
   la entrega anterior a petición del usuario.
+
+## 2026-10-07: créditos y seguimiento con el astro bajo el horizonte
+
+**Créditos**
+- Las dos páginas web (`/` y `/config`) tienen un pie con los créditos de Anthony Good,
+  K3NG, y del fork de X9X0, con sus enlaces y la licencia GPL v3.
+- El README tiene un apartado de créditos.
+- Se corrigió el aviso de estado del README, que todavía decía que el port no se había
+  probado sobre hardware.
+
+**Seguimiento bajo el horizonte**
+- Con `OPTION_TRACKING_WAIT_AT_HORIZON`, activada por defecto, `service_sun_tracking()` y
+  `service_moon_tracking()` siguen enviando órdenes aunque el astro no sea visible. Cuando no
+  lo es, la elevación pedida es 0° y el azimut es el del astro. Así el rotor está orientado
+  cuando el astro sale, y desde ahí el seguimiento continúa con normalidad.
+- Sin la opción se mantiene el comportamiento original del K3NG.
+- Se actualizaron el mensaje de la web al activar el seguimiento y la vista previa
+  (`tools/web_preview.py`).
+
+**Pruebas en la placa real**
+- `tools/test_horizonte.py`, 7 de 7. Con el Sol a −21°, en simulación, el rotor fue a 243,3°
+  (Sol a 246,7°) con 0° de elevación. También se comprobaron los créditos en las dos páginas.
+- En el primer intento el rotor quedó a 2,7° del azimut del Sol y no se corrigió más. No es
+  un fallo: es `AZIMUTH_TOLERANCE` (3°), igual que en el seguimiento normal. La prueba usa
+  ahora esa tolerancia.

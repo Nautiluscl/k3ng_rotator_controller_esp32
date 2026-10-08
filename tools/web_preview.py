@@ -76,15 +76,15 @@ class Rotor:
         self.el = min(90, max(0, self.el + e * dt))
         if self.track:
             taz, tel = self.targets()[self.track]
-            if tel > 0:
-                self.az += max(-6 * dt, min(6 * dt, taz - self.az))
-                self.el += max(-3 * dt, min(3 * dt, tel - self.el))
+            tel = max(0.0, tel)   # bajo el horizonte espera a 0° de elevación
+            self.az += max(-6 * dt, min(6 * dt, taz - self.az))
+            self.el += max(-3 * dt, min(3 * dt, tel - self.el))
 
     def status(self):
         with self.lock:
             self.step()
             t = self.targets()
-            tracking_az = self.track and abs(t[self.track][0] - self.az) > 0.5 and t[self.track][1] > 0
+            tracking_az = self.track and abs(t[self.track][0] - self.az) > 0.5
             return {
                 "az": round(self.az, 2), "el": round(self.el, 2), "el_ok": 1,
                 "az_mv": self.jog["az"] or ("cw" if tracking_az else ""), "el_mv": self.jog["el"] or "",
@@ -180,7 +180,7 @@ class Handler(BaseHTTPRequestHandler):
                     rotor.track = target
                     visible = rotor.targets()[target][1] > 0
                     return self.result(True, ("Siguiendo " + name) if visible else
-                                       "Seguimiento de %s activo (bajo el horizonte: espera a que salga)" % name)
+                                       "Seguimiento de %s activo (bajo el horizonte: el rotor espera en su azimut, a 0° de elevación)" % name)
                 rotor.track = None
                 return self.result(True, "Seguimiento de %s desactivado" % name)
             if path == "/api/config":

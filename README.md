@@ -21,10 +21,10 @@ de configuración en Python, está en [README.en.md](README.en.md). El registro 
 port está en [BITACORA.md](BITACORA.md) y el plan técnico en
 [PLAN_PORT_ESP32.md](PLAN_PORT_ESP32.md).
 
-> **Estado:** compila sin errores ni avisos para `esp32dev`, pero **todavía no se ha probado
-> sobre el hardware real**. La interfaz web se probó contra un rotor simulado
-> (`tools/web_preview.py`). Antes de conectar motores hay que hacer las pruebas de banco del
-> apartado [Puesta en marcha](#puesta-en-marcha).
+> **Estado:** compila sin errores ni avisos para `esp32dev` y está probado sobre un ESP32 real
+> (red, web, configuración, puerto TCP y simulación). El BNO055, el HH-12 y los relés todavía
+> no se han probado conectados. Antes de conectar motores hay que hacer las pruebas de banco
+> del apartado [Puesta en marcha](#puesta-en-marcha).
 
 ---
 
@@ -253,7 +253,9 @@ la IP que muestra `\WI`.
 │ Señal    -61 dBm (Buena)      │
 │ IP · Uptime · Último reinicio │
 │ Hora UTC · Sensor EL · Locator│
-│ [ Locator ______ ] [Guardar]  │
+│ [ ⚙ Configuración ]           │
+├───────────────────────────────┤
+│ Créditos: K3NG y fork de X9X0 │
 └───────────────────────────────┘
 ```
 
@@ -262,11 +264,21 @@ la IP que muestra `\WI`.
 | Azimut / Elevación | Posición actual y si el eje se está moviendo |
 | Cruz de botones | **Mantener pulsado** para mover: ▲ arriba, ▼ abajo, ◀ CCW, ▶ CW. Al soltar, el eje se para |
 | STOP | Parada inmediata de los dos ejes y fin de cualquier seguimiento |
-| ☀ Seguir Sol / ☾ Seguir Luna | Activan o desactivan el seguimiento; muestran la posición del astro. Si está bajo el horizonte, el rotor espera a que salga |
+| ☀ Seguir Sol / ☾ Seguir Luna | Activan o desactivan el seguimiento; muestran la posición del astro. Si está bajo el horizonte, el rotor apunta a su azimut con 0° de elevación y empieza a seguirlo en cuanto sale |
 | Información | Red y señal (RSSI), IP, uptime, último reinicio, hora UTC, estado del BNO055 y locator |
 | ⚙ Configuración | Abre la página de configuración (`/config`) |
 
 Mover un eje a mano desactiva el seguimiento activo.
+
+Con el astro bajo el horizonte, el seguimiento no espera parado: el rotor va al azimut que
+el astro tiene en ese momento, con la elevación en 0°, y lo acompaña en azimut hasta que sale.
+Así la antena ya está orientada en el momento de la salida. Lo controla
+`OPTION_TRACKING_WAIT_AT_HORIZON` en `rotator_features_esp32.h`; sin esa opción se recupera el
+comportamiento original del K3NG, que no mueve el rotor hasta que el astro sale. Como en el
+seguimiento normal, el azimut no se corrige si la diferencia es menor que `AZIMUTH_TOLERANCE`
+(3° por defecto).
+
+Las dos páginas muestran al pie los créditos del proyecto original y del fork.
 
 ### Seguridad del movimiento manual
 
@@ -479,9 +491,21 @@ tools/
   web_preview.py                    vista previa de la web con rotor simulado
   test_red.py, test_sol_y_tcp.py,   pruebas contra la placa real (red, web, Sol, TCP,
   test_simulacion.py, test_serie.py simulación, puerto serie, configuración)
-  test_config.py
+  test_config.py, test_horizonte.py   (y seguimiento bajo el horizonte)
 BITACORA.md                         registro de desarrollo del port
 ```
+
+## Créditos
+
+- **Anthony Good, K3NG**, autor del
+  [K3NG Rotator Controller](https://github.com/k3ng/k3ng_rotator_controller), en el que se
+  basa todo el firmware: control de rotación, protocolos Yaesu y Easycom, seguimiento del Sol
+  y de la Luna, y soporte del HH-12.
+- **X9X0**, autor del [fork](https://github.com/X9X0/k3ng_rotator_controller) del que parte
+  este port, con la herramienta de configuración en Python
+  (ver [README.en.md](README.en.md)).
+- El port a ESP32, con WiFi, el servidor web, el BNO055 y el modo simulación, se hizo sobre
+  ese fork.
 
 ## Licencia
 
