@@ -38,10 +38,10 @@ You can tweak these, but read the online documentation!
 // or set via the \?AO (Aplha Oscar), \?AF, \?EO (Echo Oscar), \?EF commands 
 // these correspond with the analog input voltage
 //  a value of 1 is approximately 0 volts, a value of 1024 is approximately 5 volts (or 3.3 volts on some boards)
-#define ANALOG_AZ_FULL_CCW_EEPROM_INITIALIZE 1
-#define ANALOG_AZ_FULL_CW_EEPROM_INITIALIZE 1023
-#define ANALOG_EL_FULL_DOWN_EEPROM_INITIALIZE 1
-#define ANALOG_EL_FULL_UP_EEPROM_INITIALIZE 1023
+#define ANALOG_AZ_FULL_CCW_EEPROM_INITIALIZE 0      // ADC del ESP32: 12 bits, 0 a 4095
+#define ANALOG_AZ_FULL_CW_EEPROM_INITIALIZE 4095
+#define ANALOG_EL_FULL_DOWN_EEPROM_INITIALIZE 0
+#define ANALOG_EL_FULL_UP_EEPROM_INITIALIZE 4095
 
 #define ANALOG_AZ_OVERLAP_DEGREES 540         // if overlap_led above is enabled, turn on overlap led line if azimuth is greater than this setting
                                               // you must use raw azimuth (if the azimuth on the rotator crosses over to 0 degrees, add 360
@@ -102,13 +102,13 @@ You can tweak these, but read the online documentation!
 
 // Speed pot settings
 #define SPEED_POT_LOW 0
-#define SPEED_POT_HIGH 1023
+#define SPEED_POT_HIGH 4095
 #define SPEED_POT_LOW_MAP 1
 #define SPEED_POT_HIGH_MAP 255
 
 // Azimuth preset pot settings
 #define AZ_PRESET_POT_FULL_CW 0
-#define AZ_PRESET_POT_FULL_CCW 1023
+#define AZ_PRESET_POT_FULL_CCW 4095
 #define AZ_PRESET_POT_FULL_CW_MAP 180         // azimuth pot fully counter-clockwise degrees
 #define AZ_PRESET_POT_FULL_CCW_MAP 630        // azimuth pot fully clockwise degrees
 
@@ -361,6 +361,10 @@ You can tweak these, but read the online documentation!
 // Tamaño de la EEPROM emulada en flash (ESP32). Debe cubrir la estructura de configuración;
 // si se queda corto, la compilación falla con un static_assert.
 #define ESP32_EEPROM_SIZE 1024
+
+// Potenciómetros: el ADC del ESP32 es ruidoso, así que cada lectura es el promedio de
+// ESP32_ADC_SAMPLES conversiones (unos 10 us cada una)
+#define ESP32_ADC_SAMPLES 16
 //#define REMOTE_PORT Serial3                 // used to control remote unit
 #define REMOTE_UNIT_PORT_BAUD_RATE 9600 
 #define GPS_PORT Serial2

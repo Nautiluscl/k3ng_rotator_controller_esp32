@@ -175,6 +175,8 @@ button.dan{background:transparent;border-color:var(--st);color:var(--st)}
 .sw i{width:52px;height:30px;border-radius:15px;background:#2f4155;position:relative;flex:none;transition:.2s}
 .sw i:after{content:"";position:absolute;width:24px;height:24px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.2s}
 .sw input:checked+i{background:var(--wa)}.sw input:checked+i:after{left:25px}
+[hidden]{display:none!important}
+.pot{display:grid;gap:8px}
 .note{color:var(--mu);font-size:12.5px;margin:0}
 .warn{color:var(--wa)}
 dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:14px}
@@ -197,7 +199,7 @@ dt{color:var(--mu)}dd{margin:0;text-align:right;font-variant-numeric:tabular-num
  <h2>Rotor</h2>
  <label>Punto de inicio de azimut (°)<input type="number" id="az_start" min="0" max="359" step="1" required></label>
  <label>Rango de giro de azimut (°)<input type="number" id="az_cap" min="90" max="720" step="1" required></label>
- <label>Offset de elevación (°)<small>Se suma a la lectura del BNO055</small><input type="number" id="el_offset" min="-90" max="90" step="0.1" required></label>
+ <label>Offset de elevación (°)<small>Se suma a la lectura del sensor de elevación</small><input type="number" id="el_offset" min="-90" max="90" step="0.1" required></label>
  <h2>Estación</h2>
  <label>Zona horaria (h)<small>Solo para la hora local del puerto de control</small><input type="number" id="tz" min="-12" max="14" step="0.5" required></label>
  <h2>Seguimiento del Sol</h2>
@@ -227,6 +229,15 @@ dt{color:var(--mu)}dd{margin:0;text-align:right;font-variant-numeric:tabular-num
  <div class="row"><button id="bsave">Guardar calibración</button><button id="bclear" class="dan">Borrar</button></div>
 </section>
 
+<section class="card" id="cpot" hidden>
+ <h2>Potenciómetros</h2>
+ <p class="note">Lleva el rotor a cada tope (desde la página de control o con el mando del rotor) y pulsa el botón de ese extremo. La lectura nunca debe llegar a 4095: eso indica que la entrada pasa de 3,3 V y falta el divisor de tensión.</p>
+ <div id="paz" class="pot"><dl><dt>Azimut: lectura</dt><dd id="padc">--</dd><dt>Tope CCW / CW</dt><dd id="pacal">--</dd></dl>
+  <div class="row"><button data-p="az_ccw">Fijar tope CCW</button><button data-p="az_cw">Fijar tope CW</button></div></div>
+ <div id="pel" class="pot"><dl><dt>Elevación: lectura</dt><dd id="pedc">--</dd><dt>0° / máximo</dt><dd id="pecal">--</dd></dl>
+  <div class="row"><button data-p="el_down">Fijar 0°</button><button data-p="el_up">Fijar <span id="pemax">--</span>°</button></div></div>
+</section>
+
 <form class="card" id="fwifi">
  <h2>Red WiFi</h2>
  <dl><dt>Red actual</dt><dd id="ssid">--</dd><dt>Señal</dt><dd id="rssi">--</dd><dt>IP</dt><dd id="ip">--</dd></dl>
@@ -253,6 +264,7 @@ async function req(u,o){const c=new AbortController(),t=setTimeout(()=>c.abort()
 async function post(u,b){const r=await req(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(b||{})});
  const j=await r.json().catch(()=>({ok:false,msg:'Respuesta inválida'}));if(!j.ok)throw new Error(j.msg||'Error');return j}
 function dur(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return(d?d+'d ':'')+h+'h '+m+'m'}
+function adc(v){return v+' ('+(v*3.3/4095).toFixed(2)+' V aprox.)'+(v>=4095?' SATURADO':'')}
 function lvl(id,v){$(id).textContent=v;$(id).className='lvl'+(v==3?' ok':'')}
 function render(j,first){C=j;
  $('sim').checked=!!j.sim;
@@ -261,6 +273,9 @@ function render(j,first){C=j;
  $('cbno').hidden=!j.bno.present;
  $('bno').textContent=j.bno.text;lvl('cs',j.bno.sys);lvl('cg',j.bno.gyro);lvl('ca',j.bno.accel);
  $('cofs').textContent=j.bno.saved?'sí':'no';$('craw').textContent=j.bno.raw.toFixed(2)+'°';
+ const p=j.pot;$('cpot').hidden=!(p.az||p.el);$('paz').hidden=!p.az;$('pel').hidden=!p.el;
+ $('padc').textContent=adc(p.adc_az);$('pacal').textContent=p.az_ccw+' / '+p.az_cw;
+ $('pedc').textContent=adc(p.adc_el);$('pecal').textContent=p.el_0+' / '+p.el_max;$('pemax').textContent=p.el_deg;
  $('ssid').textContent=j.wifi.ssid;$('rssi').textContent=j.wifi.ok?j.wifi.rssi+' dBm':'--';$('ip').textContent=j.wifi.ip||'--';
  $('ver').textContent=j.ver;$('up').textContent=dur(j.uptime);$('rst').textContent=j.rst;$('heap').textContent=Math.round(j.heap/1024)+' KB'}
 async function load(first){try{const r=await req('/api/config');render(await r.json(),first)}catch(e){msg('Sin conexión con el rotor',1)}}
@@ -273,6 +288,9 @@ $('floc').addEventListener('submit',async e=>{e.preventDefault();
 $('bsave').addEventListener('click',async()=>{try{const j=await post('/api/bno055',{action:'save'});msg(j.msg)}catch(e){msg(e.message,1)}});
 $('bclear').addEventListener('click',async()=>{if(!window.confirm('¿Borrar la calibración guardada del BNO055?'))return;
  try{const j=await post('/api/bno055',{action:'clear'});msg(j.msg)}catch(e){msg(e.message,1)}});
+document.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',async()=>{
+ if(!window.confirm('¿Está el rotor en ese tope? Se guardará la lectura actual.'))return;
+ try{const j=await post('/api/potcal',{action:b.dataset.p});msg(j.msg);setTimeout(load,600)}catch(e){msg(e.message,1)}}));
 $('fwifi').addEventListener('submit',async e=>{e.preventDefault();const s=$('nssid').value;
  if(!s){msg('Falta el nombre de la red',1);return}
  if(!window.confirm('El rotor se conectará a "'+s+'" y dejará esta red. ¿Continuar?'))return;
@@ -309,17 +327,25 @@ load(true);setInterval(()=>load(false),2000);
 #define WEB_CMD_BNO055 8
 #define WEB_CMD_WIFI 9
 #define WEB_CMD_RESTART 10
+#define WEB_CMD_POT_CAL 11
 
 #define WEB_CONFIG_FIELDS 10      // mismo orden que web_config_names[]
 
 #define WEB_TARGET_SUN 1
 #define WEB_TARGET_MOON 2
 
+// calibración de potenciómetros (WEB_CMD_POT_CAL): extremo que se fija con la lectura actual
+#define WEB_POT_AZ_CCW 1
+#define WEB_POT_AZ_CW 2
+#define WEB_POT_EL_DOWN 3
+#define WEB_POT_EL_UP 4
+#define WEB_POT_MIN_SPAN 200      // separación mínima entre extremos, en cuentas del ADC
+
 struct web_command_t {
   byte type;
   byte axis;          // AZ, EL o 0 = ambos (RELEASE)
   byte request;       // REQUEST_CW/CCW/UP/DOWN
-  byte target;        // WEB_TARGET_SUN / WEB_TARGET_MOON
+  byte target;        // WEB_TARGET_SUN / WEB_TARGET_MOON; WEB_CMD_POT_CAL: WEB_POT_*
   byte on;
   char grid[7];
   uint32_t sid;       // sesión de la página (aleatoria por carga); 0 = cliente sin sesión (curl, scripts)
@@ -375,6 +401,9 @@ struct web_snapshot_t {
   double lat, lon;
   byte bno_present, bno_sys, bno_gyro, bno_accel, bno_saved;
   float bno_raw;
+  byte pot_az, pot_el;                    // potenciómetro presente en cada eje
+  int adc_az, adc_el;                     // lectura actual del ADC (0 a 4095)
+  int cal_az_ccw, cal_az_cw, cal_el_0, cal_el_max;
   uint32_t heap;
 };
 
@@ -523,6 +552,21 @@ void web_update_snapshot(){
     s.bno_saved = bno055_offsets_restored;
     s.bno_raw = bno055_raw_elevation;
   #endif
+
+  #if defined(FEATURE_AZ_POSITION_POTENTIOMETER)
+    s.pot_az = 1;
+    s.adc_az = analog_az;
+  #endif
+  #if defined(FEATURE_EL_POSITION_POTENTIOMETER)
+    s.pot_el = 1;
+    s.adc_el = analog_el;
+    s.bno_text = "Potenciómetro";
+  #endif
+  s.cal_az_ccw = configuration.analog_az_full_ccw;
+  s.cal_az_cw = configuration.analog_az_full_cw;
+  s.cal_el_0 = configuration.analog_el_0_degrees;
+  s.cal_el_max = configuration.analog_el_max_elevation;
+
   s.sim = SIMULATION_IS_ACTIVE();
 
   portENTER_CRITICAL(&web_snapshot_mux);
@@ -712,6 +756,40 @@ void web_apply_command(web_command_t * cmd){
           bno055_save_offsets();
         } else if (cmd->text1[0] == 'c') {
           bno055_clear_offsets();
+        }
+      #endif
+      break;
+
+    case WEB_CMD_POT_CAL:
+      // mismo efecto que \?AO, \?AF, \?EO y \?EF: el extremo toma la lectura actual. Se
+      // vuelve a comprobar la separación con el otro extremo con la lectura fresca, porque con
+      // los dos extremos iguales la conversión a grados divide por cero
+      #if defined(FEATURE_AZ_POSITION_POTENTIOMETER)
+        if ((cmd->target == WEB_POT_AZ_CCW) || (cmd->target == WEB_POT_AZ_CW)) {
+          read_azimuth(1);
+          int other = (cmd->target == WEB_POT_AZ_CCW) ? configuration.analog_az_full_cw : configuration.analog_az_full_ccw;
+          if (abs(analog_az - other) < WEB_POT_MIN_SPAN) { break; }
+          if (cmd->target == WEB_POT_AZ_CCW) {
+            configuration.analog_az_full_ccw = analog_az;
+          } else {
+            configuration.analog_az_full_cw = analog_az;
+          }
+          write_settings_to_eeprom();
+          read_azimuth(1);
+        }
+      #endif
+      #if defined(FEATURE_EL_POSITION_POTENTIOMETER)
+        if ((cmd->target == WEB_POT_EL_DOWN) || (cmd->target == WEB_POT_EL_UP)) {
+          read_elevation(1);
+          int other = (cmd->target == WEB_POT_EL_DOWN) ? configuration.analog_el_max_elevation : configuration.analog_el_0_degrees;
+          if (abs(analog_el - other) < WEB_POT_MIN_SPAN) { break; }
+          if (cmd->target == WEB_POT_EL_DOWN) {
+            configuration.analog_el_0_degrees = analog_el;
+          } else {
+            configuration.analog_el_max_elevation = analog_el;
+          }
+          write_settings_to_eeprom();
+          read_elevation(1);
         }
       #endif
       break;
@@ -1142,13 +1220,15 @@ void web_handle_config_get(){
     json += "\":";
     json += String(s.cfg[i], 2);
   }
-  char buffer[420];
+  char buffer[600];
   snprintf(buffer, sizeof(buffer),
     "},\"sim\":%d,\"grid\":\"%s\",\"lat\":%.6f,\"lon\":%.6f,"
+    "\"pot\":{\"az\":%d,\"el\":%d,\"adc_az\":%d,\"adc_el\":%d,\"az_ccw\":%d,\"az_cw\":%d,\"el_0\":%d,\"el_max\":%d,\"el_deg\":%d},"
     "\"bno\":{\"present\":%d,\"text\":\"%s\",\"sys\":%d,\"gyro\":%d,\"accel\":%d,\"saved\":%d,\"raw\":%.2f},"
     "\"wifi\":{\"ok\":%d,\"ssid\":\"%s\",\"rssi\":%d,\"ip\":\"%s\"},"
     "\"ver\":\"%s\",\"uptime\":%lu,\"rst\":\"%s\",\"heap\":%lu}",
     s.sim, s.grid, s.lat, s.lon,
+    s.pot_az, s.pot_el, s.adc_az, s.adc_el, s.cal_az_ccw, s.cal_az_cw, s.cal_el_0, s.cal_el_max, (int)ELEVATION_MAXIMUM_DEGREES,
     s.bno_present, s.bno_text ? s.bno_text : "-", s.bno_sys, s.bno_gyro, s.bno_accel, s.bno_saved, (double)s.bno_raw,
     s.wifi_ok, s.ssid, s.rssi, s.ip,
     CODE_VERSION " ESP32 " __DATE__, s.uptime, s.reset_reason ? s.reset_reason : "-", (unsigned long)s.heap);
@@ -1249,6 +1329,49 @@ void web_handle_bno055(){
 }
 
 // --------------------------------------------------------------
+void web_handle_potcal(){
+
+  if (!web_check_auth()) {
+    return;
+  }
+
+  web_snapshot_t s;
+  web_get_snapshot(&s);
+  web_command_t cmd;
+  memset(&cmd, 0, sizeof(cmd));
+  cmd.type = WEB_CMD_POT_CAL;
+
+  String action = web_server.arg("action");
+  int reading, other;
+  const char * done;
+  if ((action == "az_ccw") && s.pot_az) {
+    cmd.target = WEB_POT_AZ_CCW; reading = s.adc_az; other = s.cal_az_cw; done = "Extremo CCW de azimut guardado";
+  } else if ((action == "az_cw") && s.pot_az) {
+    cmd.target = WEB_POT_AZ_CW; reading = s.adc_az; other = s.cal_az_ccw; done = "Extremo CW de azimut guardado";
+  } else if ((action == "el_down") && s.pot_el) {
+    cmd.target = WEB_POT_EL_DOWN; reading = s.adc_el; other = s.cal_el_max; done = "Elevación 0° guardada";
+  } else if ((action == "el_up") && s.pot_el) {
+    cmd.target = WEB_POT_EL_UP; reading = s.adc_el; other = s.cal_el_0; done = "Elevación máxima guardada";
+  } else {
+    web_send_result(0, (s.pot_az || s.pot_el) ? "Acción no válida" : "Firmware compilado sin potenciómetros");
+    return;
+  }
+
+  if (reading >= 4095) {
+    web_send_result(0, "Lectura saturada (4095): la entrada llega a 3,3 V o más. Revisa el divisor de tensión");
+    return;
+  }
+  if (abs(reading - other) < WEB_POT_MIN_SPAN) {
+    web_send_result(0, "Lectura demasiado cerca del otro extremo: ¿está el rotor en el tope correcto?");
+    return;
+  }
+  if (web_queue_command(&cmd)) {
+    web_send_result(1, done);
+  }
+
+}
+
+// --------------------------------------------------------------
 void web_handle_wifi(){
 
   if (!web_check_auth()) {
@@ -1327,6 +1450,7 @@ void initialize_web_server(){
   web_server.on("/api/config", HTTP_POST, web_handle_config_post);
   web_server.on("/api/sim", HTTP_POST, web_handle_sim);
   web_server.on("/api/bno055", HTTP_POST, web_handle_bno055);
+  web_server.on("/api/potcal", HTTP_POST, web_handle_potcal);
   web_server.on("/api/wifi", HTTP_POST, web_handle_wifi);
   web_server.on("/api/restart", HTTP_POST, web_handle_restart);
   web_server.onNotFound(web_handle_not_found);

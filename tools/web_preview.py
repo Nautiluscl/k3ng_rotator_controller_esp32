@@ -56,8 +56,14 @@ class Rotor:
         self.cfg = {"az_start": 0, "az_cap": 360, "el_offset": 0, "tz": -3, "sun_check": 5000, "sun_min": 5000,
                     "sun_thr": 0.5, "moon_check": 5000, "moon_min": 5000, "moon_thr": 0.5}
         self.ssid = "Casa_2.4G"
+        # la vista previa muestra a la vez las tarjetas del BNO055 y de los potenciómetros
+        self.pot = {"az": 1, "el": 1, "az_ccw": 120, "az_cw": 3620, "el_0": 90, "el_max": 3490}
         self.start = time.time()
         self.t = time.time()
+
+    def adc(self, axis):
+        """Lectura simulada del ADC: 0,1 a 2,9 V a lo largo del recorrido."""
+        return int(self.az / 450 * 3500) + 120 if axis == "az" else int(self.el / 180 * 3400) + 90
 
     def targets(self):
         h = (time.time() / 60) % 360
@@ -128,6 +134,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/config":
             st = rotor.status()
             self.reply(200, json.dumps({"cfg": rotor.cfg, "sim": rotor.sim, "grid": rotor.grid, "lat": -33.4378, "lon": -70.6505,
+                "pot": dict(rotor.pot, adc_az=rotor.adc("az"), adc_el=rotor.adc("el"), el_deg=180),
                 "bno": {"present": 1, "text": "BNO055 OK", "sys": 3, "gyro": 3, "accel": 2, "saved": 0, "raw": st["el"]},
                 "wifi": {"ok": 1, "ssid": rotor.ssid, "rssi": -61, "ip": "192.168.1.172"},
                 "ver": "2023.10.06.2200 ESP32 (simulado)", "uptime": st["uptime"], "rst": "POWER_ON", "heap": 214000}))
@@ -199,6 +206,17 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/bno055":
                 return self.result(args.get("action") in ("save", "clear"),
                                    "Falta calibrar: Giro y Acel tienen que estar en 3" if args.get("action") == "save" else "Calibración borrada")
+            if path == "/api/potcal":
+                keys = {"az_ccw": ("az_ccw", "az_cw", "az"), "az_cw": ("az_cw", "az_ccw", "az"),
+                        "el_down": ("el_0", "el_max", "el"), "el_up": ("el_max", "el_0", "el")}
+                k = keys.get(args.get("action"))
+                if not k:
+                    return self.result(False, "Acción no válida")
+                adc = rotor.adc(k[2])
+                if abs(adc - rotor.pot[k[1]]) < 200:
+                    return self.result(False, "Lectura demasiado cerca del otro extremo: ¿está el rotor en el tope correcto?")
+                rotor.pot[k[0]] = adc
+                return self.result(True, "Tope guardado")
             if path == "/api/wifi":
                 s = args.get("ssid", "")
                 if not 1 <= len(s) <= 32:

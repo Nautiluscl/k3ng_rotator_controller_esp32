@@ -16,6 +16,7 @@
     GPIO 18 HH-12 CLK      GPIO 17 HH-12 CS      GPIO 19 HH-12 DO (con adaptador de nivel si el HH-12 va a 5 V)
     GPIO 21 I2C SDA        GPIO 22 I2C SCL       (BNO055)
     GPIO 23 BNO055 RST (opcional, ver BNO055_RESET_PIN en rotator_settings_esp32.h)
+    GPIO 34 potenciómetro AZ   GPIO 35 potenciómetro EL   (solo con ESP32_SENSORS_POTENTIOMETERS)
 
   Most pins can be disabled by setting them to 0 (zero).  If you're not using a pin or function, set it to 0.
 
@@ -36,7 +37,14 @@
 #define button_cw 0              // normally open button to ground for manual CW rotation (schematic pin: A2)
 #define button_ccw 0             // normally open button to ground for manual CCW rotation (schematic pin: A3)
 #define serial_led 0             // LED blinks when command is received on serial port (set to 0 to disable)
-#define rotator_analog_az 0      // reads analog azimuth voltage from rotator - pin 4 on Yaesu connector
+// Potenciómetros (ESP32_SENSORS_POTENTIOMETERS): solo pines del ADC1 (GPIO 32-39), porque el
+// ADC2 no funciona con el WiFi activo. 34 y 35 son solo de entrada. Máximo 3,3 V: con un
+// rotor Yaesu hace falta un divisor de tensión (ver README).
+#if defined(FEATURE_AZ_POSITION_POTENTIOMETER)
+  #define rotator_analog_az 34   // tensión de azimut del rotor - pin 4 del conector Yaesu (a través del divisor)
+#else
+  #define rotator_analog_az 0
+#endif
 #define azimuth_speed_voltage 0  // optional - PWM output for speed control voltage feed into rotator (on continually unlike rotate_cw_pwm and rotate_ccw_pwm)
 #define overlap_led 0            // line goes active when azimuth rotator is in overlap (> 360 rotators)
 #define brake_az 0               // goes high to disengage azimuth brake (set to 0 to disable)
@@ -61,7 +69,11 @@
   #define rotate_up_down_pwm 0      // optional - PWM on both UP and DOWN (must be PWM capable pin)
   #define rotate_up_freq 0          // optional - UP variable frequency output
   #define rotate_down_freq 0        // optional - UP variable frequency output
-  #define rotator_analog_el 0       // reads analog elevation voltage from rotator
+  #if defined(FEATURE_EL_POSITION_POTENTIOMETER)
+    #define rotator_analog_el 35     // tensión de elevación del rotor (a través del divisor; la patilla depende del modelo, ver su manual)
+  #else
+    #define rotator_analog_el 0
+  #endif
   #define button_up 0               // normally open button to ground for manual up elevation
   #define button_down 0             // normally open button to ground for manual down rotation
   #define brake_el 0                // goes high to disengage elevation brake (set to 0 to disable)

@@ -442,3 +442,45 @@ GPIO 25/26/32/33 y el procedimiento completo de "Puesta en marcha" del README.
 - En el primer intento el rotor quedó a 2,7° del azimut del Sol y no se corrigió más. No es
   un fallo: es `AZIMUTH_TOLERANCE` (3°), igual que en el seguimiento normal. La prueba usa
   ahora esa tolerancia.
+
+## 2026-10-07: potenciómetros del rotor como alternativa al HH-12 y al BNO055
+
+**Selección de sensores**
+- En `rotator_features_esp32.h` se elige al compilar entre `ESP32_SENSORS_HH12_BNO055`
+  (por defecto) y `ESP32_SENSORS_POTENTIOMETERS`. Si se activan las dos, la compilación se
+  detiene con un error.
+- Con potenciómetros, las entradas son GPIO 34 (AZ) y 35 (EL), del ADC1, que es el único
+  que funciona con el WiFi activo.
+
+**Adaptación al ADC del ESP32**
+- Los topes por defecto pasan de 1..1023 (10 bits del Arduino) a 0..4095 (12 bits).
+- `analogReadEnhanced()` promedia `ESP32_ADC_SAMPLES` (16) lecturas en el ESP32, porque su
+  ADC es más ruidoso.
+
+**Calibración desde la web**
+- `/config` tiene una tarjeta *Potenciómetros* (solo con ese firmware). Muestra la lectura
+  y la tensión aproximada de cada eje, y tiene botones para fijar los topes. Hacen lo mismo
+  que `\?AO`, `\?AF`, `\?EO` y `\?EF`.
+- Nueva API `POST /api/potcal` con `action=az_ccw|az_cw|el_down|el_up`. Rechaza una lectura
+  saturada (4095), que indica que falta el divisor, y una lectura a menos de 200 cuentas del
+  otro tope. Sin esta segunda comprobación, los dos topes podrían quedar iguales y la
+  conversión a grados dividiría por cero. El loop repite esta comprobación con una lectura
+  nueva antes de guardar.
+- La página principal muestra "Potenciómetro" como sensor de elevación.
+
+**Corrección**
+- Las tarjetas con `hidden` no se ocultaban, porque `.card{display:grid}` anulaba ese
+  atributo. Se añadió `[hidden]{display:none!important}`. Afectaba a la tarjeta del BNO055.
+
+**README**
+- Apartados *Sensores de posición* y *Potenciómetros*: esquema del divisor de tensión
+  (10 kΩ / 15 kΩ y 100 nF, factor 0,6), comprobación con multímetro antes de conectar,
+  límites del ADC del ESP32 y procedimiento de calibración.
+
+**Pruebas en la placa real**
+- Con el firmware de potenciómetros y las entradas al aire, `tools/test_potenciometros.py`
+  dio 11 de 11. Comprueba la tarjeta, las lecturas, el rechazo de acciones no válidas y que
+  cada calibración se guarde o se rechace de forma coherente con la lectura.
+- La placa se dejó con el firmware por defecto (HH-12/BNO055). Regresión: `test_config.py`
+  15 de 15, `test_red.py` 25 de 25 y `test_horizonte.py` 7 de 7.
+- Falta la prueba con potenciómetros reales.

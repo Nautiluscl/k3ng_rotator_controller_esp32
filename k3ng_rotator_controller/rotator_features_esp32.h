@@ -56,6 +56,26 @@
 
 //#define FEATURE_ADC_RESOLUTION12   // 12 bit ADC resolution for Teensy 3.x, Arduino Due Zero MKR families 
 
+/* Sensores de posición del perfil ESP32: dejar activa UNA de estas dos opciones.
+   Para otra combinación (p. ej. HH-12 en azimut y potenciómetro en elevación) se comentan las
+   dos y se activan a mano las FEATURE_*_POSITION_* de la lista de abajo. */
+#define ESP32_SENSORS_HH12_BNO055          // azimut con encoder HH-12 y elevación con BNO055
+// #define ESP32_SENSORS_POTENTIOMETERS    // azimut y elevación con los potenciómetros del rotor (Yaesu G-5500 y similares, ver README)
+
+#if defined(ESP32_SENSORS_HH12_BNO055) && defined(ESP32_SENSORS_POTENTIOMETERS)
+  #error "Activar solo una de ESP32_SENSORS_HH12_BNO055 y ESP32_SENSORS_POTENTIOMETERS"
+#endif
+
+#if defined(ESP32_SENSORS_POTENTIOMETERS)
+  #define FEATURE_AZ_POSITION_POTENTIOMETER
+  #define FEATURE_EL_POSITION_POTENTIOMETER
+#endif
+
+#if defined(ESP32_SENSORS_HH12_BNO055)
+  #define FEATURE_AZ_POSITION_HH12_AS5045_SSI
+  #define FEATURE_EL_POSITION_BNO055       // Bosch BNO055 por I2C, solo inclinación (ajustes BNO055_* en rotator_settings)
+#endif
+
 /* position sensors - pick one for azimuth and one for elevation if using an az/el rotator */
 // #define FEATURE_AZ_POSITION_POTENTIOMETER  //this is used for both a voltage from a rotator control or a homebrew rotator with a potentiometer
 // #define FEATURE_AZ_POSITION_ROTARY_ENCODER
@@ -67,7 +87,7 @@
 // #define FEATURE_AZ_POSITION_GET_FROM_REMOTE_UNIT  // requires FEATURE_MASTER_WITH_SERIAL_SLAVE or FEATURE_MASTER_WITH_ETHERNET_SLAVE
 // #define FEATURE_AZ_POSITION_ADAFRUIT_LSM303              // Uncomment for azimuth using LSM303 compass and Adafruit library (https://github.com/adafruit/Adafruit_LSM303) (also uncomment object declaration below)
 // #define FEATURE_AZ_POSITION_POLOLU_LSM303              // Uncomment for azimuth using LSM303 compass and Polulu library
-#define FEATURE_AZ_POSITION_HH12_AS5045_SSI
+// #define FEATURE_AZ_POSITION_HH12_AS5045_SSI   // ver ESP32_SENSORS_HH12_BNO055 arriba
 // #define FEATURE_AZ_POSITION_HH12_AS5045_SSI_RELATIVE  // use when more than 360 degrees of rotation
 // #define FEATURE_AZ_POSITION_INCREMENTAL_ENCODER
 // #define FEATURE_AZ_POSITION_A2_ABSOLUTE_ENCODER
@@ -87,7 +107,7 @@
 // #define FEATURE_EL_POSITION_INCREMENTAL_ENCODER
 // #define FEATURE_EL_POSITION_MEMSIC_2125
 // #define FEATURE_EL_POSITION_A2_ABSOLUTE_ENCODER
-#define FEATURE_EL_POSITION_BNO055               // Bosch BNO055 por I2C, solo inclinación (ajustes BNO055_* en rotator_settings)
+// #define FEATURE_EL_POSITION_BNO055            // ver ESP32_SENSORS_HH12_BNO055 arriba
    
 // And if you are using any display other than a 4 bit LCD, you must also change the feature setting in rotator_k3ngdisplay.h!!!!
 // #define FEATURE_4_BIT_LCD_DISPLAY // Uncomment for classic 4 bit LCD display (most common)

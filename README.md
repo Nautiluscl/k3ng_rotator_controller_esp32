@@ -12,6 +12,8 @@ el PC:
   movimiento, seguimiento del Sol y de la Luna, y STOP.
 - **Azimut** con encoder absoluto **HH-12** (AS5045, SSI).
 - **Elevación (inclinación)** con un **Bosch BNO055** por I2C.
+- Como alternativa, **los dos potenciómetros del rotor** (Yaesu G-5500 y similares), con
+  calibración desde la web. Ver [Sensores de posición](#sensores-de-posición).
 - **Hora por NTP**, necesaria para seguir el Sol y la Luna, sin GPS ni RTC.
 - **Modo simulación:** un rotor virtual para probar PstRotator u otros programas sin motores
   ni sensores.
@@ -42,6 +44,7 @@ port está en [BITACORA.md](BITACORA.md) y el plan técnico en
 10. [Seguridad y robustez](#seguridad-y-robustez)
 11. [Limitaciones](#limitaciones)
 12. [Estructura del código](#estructura-del-código)
+13. [Créditos](#créditos)
 
 ---
 
@@ -66,6 +69,8 @@ variantes de ESP32.
 | BNO055 SDA | 21 | I2C |
 | BNO055 SCL | 22 | I2C |
 | BNO055 RST | 23 | Opcional; se activa con `BNO055_RESET_PIN 23` |
+| Potenciómetro AZ | 34 | Solo con `ESP32_SENSORS_POTENTIOMETERS`. Entrada analógica, **máximo 3,3 V** |
+| Potenciómetro EL | 35 | Solo con `ESP32_SENSORS_POTENTIOMETERS`. Entrada analógica, **máximo 3,3 V** |
 
 El mapa completo y los pines que se evitan a propósito (flash, pines de arranque, ADC2 con
 WiFi) están en `k3ng_rotator_controller/rotator_pins_esp32.h`.
@@ -84,6 +89,88 @@ WiFi) están en `k3ng_rotator_controller/rotator_pins_esp32.h`.
 - **Cable I2C hasta el BNO055:** el bus I2C no está pensado para cables largos. Por encima de
   aproximadamente 1 m conviene un extensor I2C diferencial (P82B715, PCA9615) o cable corto y
   apantallado.
+
+### Sensores de posición
+
+Se eligen al compilar en `k3ng_rotator_controller/rotator_features_esp32.h`, dejando activa
+una sola de estas dos líneas:
+
+```c
+#define ESP32_SENSORS_HH12_BNO055          // azimut con HH-12 y elevación con BNO055 (por defecto)
+// #define ESP32_SENSORS_POTENTIOMETERS    // azimut y elevación con los potenciómetros del rotor
+```
+
+Para una combinación distinta (por ejemplo, HH-12 en azimut y potenciómetro en elevación) se
+comentan las dos y se activan a mano las `FEATURE_AZ_POSITION_*` y `FEATURE_EL_POSITION_*`
+que hagan falta, más abajo en el mismo archivo.
+
+### Potenciómetros (Yaesu G-5500 y similares)
+
+> **Estado:** compila y la calibración web se probó en la placa con las entradas al aire,
+> pero **todavía no se ha probado con potenciómetros reales**.
+
+El controlador del rotor entrega una tensión continua proporcional a la posición de cada
+eje, que en los Yaesu llega a unos **4,5 V** en el tope (en algunos modelos el máximo se
+ajusta en el propio controlador). La patilla de cada eje depende del modelo: hay que
+consultarla en el manual del rotor.
+
+**El ESP32 no admite más de 3,3 V en sus entradas.** Conectar directamente la salida del
+rotor puede dañar el pin o el ESP32 entero. Hace falta un **divisor de tensión** en cada eje:
+
+```
+salida de posición del rotor ──[ R1 10 kΩ ]──┬──────────┬──── GPIO 34 (AZ) o 35 (EL)
+            (0 a 4,5 V)                      │          │
+                                       [ R2 15 kΩ ]  [ C 100 nF ]
+                                             │          │
+masa del rotor ──────────────────────────────┴──────────┴──── GND del ESP32
+```
+
+- **Tensión resultante:** `Vsalida = Ventrada × R2 / (R1 + R2) = Ventrada × 0,6`. Con 4,5 V
+  quedan 2,7 V, y aun con 5 V quedan 3,0 V. Así se aprovecha casi todo el rango del ADC con
+  margen de seguridad.
+- **Condensador de 100 nF:** filtra el ruido de los motores y ayuda al ADC del ESP32, que
+  necesita una fuente de baja impedancia al muestrear.
+- **Masa común:** la masa del rotor y la del ESP32 tienen que estar unidas.
+- **Antes de conectar,** con el rotor en el tope CW (y la elevación al máximo), se mide con
+  el multímetro la tensión que llega al GPIO. Tiene que ser menor de 3,1 V.
+- **Protección opcional:** un diodo Schottky (por ejemplo BAT85) desde el GPIO hacia 3,3 V
+  limita la entrada si el controlador llegara a dar más tensión de la esperada.
+- **Si la salida del controlador es de otra tensión,** se elige R2/(R1+R2) para que el
+  máximo quede entre 2,5 y 3,0 V.
+- **Potenciómetro casero,** alimentado desde los 3,3 V del ESP32: no necesita divisor. Los
+  extremos van a 3,3 V y a GND, y el cursor al GPIO (con el condensador de 100 nF a GND).
+
+Límites del ADC del ESP32, que conviene conocer:
+
+- **Rango:** lee de 0 a 4095 (12 bits), no de 0 a 1023 como el Arduino. La calibración por
+  defecto ya está pensada para ese rango.
+- **Precisión en los extremos:** es poco lineal por debajo de unos 0,1 V y se satura cerca
+  de 3,3 V. Como la salida del rotor empieza en 0 V, los primeros grados desde el tope CCW
+  pueden leerse con menos precisión. El divisor deja el extremo alto lejos de la saturación.
+- **Ruido:** el firmware promedia 16 lecturas en cada medida (`ESP32_ADC_SAMPLES` en
+  `rotator_settings_esp32.h`). Si aun así la posición oscila, se puede subir
+  `AZIMUTH_SMOOTHING_FACTOR` y `ELEVATION_SMOOTHING_FACTOR`.
+- **Pines:** solo los del ADC1 (GPIO 32 a 39) funcionan con el WiFi activo. GPIO 32 y 33 ya
+  se usan para los relés de elevación, así que quedan 34, 35, 36 y 39.
+
+**Calibración.** Se hace una vez, con el rotor conectado, desde la tarjeta *Potenciómetros*
+de la página de configuración:
+
+1. Se ajustan antes el **punto de inicio** y el **rango de giro** de azimut en la misma
+   página, según el modelo del rotor (por ejemplo, 450° en rotores con solape).
+2. Se lleva el rotor al **tope CCW** y se pulsa *Fijar tope CCW*.
+3. Se lleva al **tope CW** y se pulsa *Fijar tope CW*.
+4. En elevación, se lleva a **0°** y se pulsa *Fijar 0°*; después se lleva al **máximo**
+   (`ELEVATION_MAXIMUM_DEGREES`, 180° por defecto) y se pulsa el botón correspondiente.
+
+La tarjeta muestra la lectura del ADC de cada eje y su tensión aproximada. La calibración se
+rechaza si la lectura está saturada (4095), lo que indica que falta el divisor, o si queda
+demasiado cerca del otro extremo, lo que suele indicar que el rotor no está en el tope
+correcto. Con un ESP32 que ya tuviera este firmware, los topes guardados antes pueden ser de
+1023 (el valor del Arduino): no importa, porque la calibración los reemplaza.
+
+También se puede calibrar con los comandos del K3NG por el puerto de control: `\?AO` y
+`\?AF` para los topes CCW y CW de azimut, y `\?EO` y `\?EF` para 0° y el máximo de elevación.
 
 ### Montaje del BNO055
 
@@ -298,7 +385,8 @@ conservan tras reiniciar.
 | Estación | Zona horaria (solo para la hora local del puerto de control) |
 | Seguimiento del Sol / de la Luna | Intervalo de cálculo, intervalo mínimo entre giros y umbral en grados |
 | Ubicación | Locator Maidenhead (calcula latitud y longitud) |
-| BNO055 | Estado, niveles de calibración (Sist, Giro, Acel), guardar o borrar la calibración |
+| BNO055 | Estado, niveles de calibración (Sist, Giro, Acel), guardar o borrar la calibración. Solo con BNO055 |
+| Potenciómetros | Lectura del ADC y tensión de cada eje; fijar los topes de calibración. Solo con potenciómetros |
 | Red WiFi | Red actual, señal e IP; cambiar a otra red (se reconecta sola) |
 | Sistema | Versión, uptime, último reinicio, memoria libre y botón de reinicio |
 
@@ -492,6 +580,7 @@ tools/
   test_red.py, test_sol_y_tcp.py,   pruebas contra la placa real (red, web, Sol, TCP,
   test_simulacion.py, test_serie.py simulación, puerto serie, configuración)
   test_config.py, test_horizonte.py   (y seguimiento bajo el horizonte)
+  test_potenciometros.py              (calibración de potenciómetros; firmware con potenciómetros)
 BITACORA.md                         registro de desarrollo del port
 ```
 

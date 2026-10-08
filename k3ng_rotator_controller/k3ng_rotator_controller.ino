@@ -14147,6 +14147,15 @@ int analogReadEnhanced(uint8_t pin){
     analogReadResolution(12);
   #endif
 
+  #if defined(ARDUINO_ARCH_ESP32)
+    // ADC de 12 bits (0 a 4095) y ruidoso: se promedian varias conversiones
+    uint32_t sum = 0;
+    for (byte i = 0; i < ESP32_ADC_SAMPLES; i++) {
+      sum += analogRead(pin);
+    }
+    return (int)(sum / ESP32_ADC_SAMPLES);
+  #endif
+
   #ifdef OPTION_EXTERNAL_ANALOG_REFERENCE
     analogReference(EXTERNAL);
   #endif //OPTION_EXTERNAL_ANALOG_REFERENCE
